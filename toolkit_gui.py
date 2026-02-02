@@ -150,10 +150,11 @@ class ToolkitGUI:
         menubar = Menu(self.root)
         self.root.config(menu=menubar)
         
-        settings_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Settings", menu=settings_menu)
-        settings_menu.add_command(label="Set Gemini API Key...", command=self._ask_api_key)
-        settings_menu.add_command(label="Toggle Theme (Light/Dark)", command=self._toggle_theme)
+        advanced_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Advanced", menu=advanced_menu)
+        advanced_menu.add_command(label="✨ Set Up AI Assistant", command=self._show_ai_setup_wizard)
+        advanced_menu.add_separator()
+        advanced_menu.add_command(label="Toggle Theme (Light/Dark)", command=self._toggle_theme)
         
         help_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
@@ -182,7 +183,7 @@ class ToolkitGUI:
             "To use it, you need a free 'API Key' from Google.\n\n"
             "1. Click the button below to open Google AI Studio.\n"
             "2. Click 'Create API key'.\n"
-            "3. If asked, select 'Create API key in a new project'.\n"
+            "3. Select 'Create API key in a new project'. (This is free and one-click)\n"
             "4. Copy the key and paste it here."
         )
         tk.Label(dialog, text=instructions, justify="left", wraplength=480, 
@@ -376,9 +377,9 @@ class ToolkitGUI:
         self.btn_batch_ai = ttk.Button(frame_actions, text="✨ Batch AI\n(Suggest Alt Text)", command=self._run_batch_ai, style="Action.TButton")
         self.btn_batch_ai.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 
-        # Row 3 (AI Setup / Status)
-        self.btn_ai_setup = ttk.Button(frame_actions, text="✨ Set Up AI Assistant", command=self._show_ai_setup_wizard, style="Action.TButton")
-        self.btn_ai_setup.grid(row=2, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        # Status Label instead of big button
+        self.lbl_ai_status = ttk.Label(frame_actions, text="AI Status: Not Configured", font=("Segoe UI", 9, "italic"))
+        self.lbl_ai_status.grid(row=2, column=0, columnspan=3, pady=5)
         
         frame_actions.columnconfigure(0, weight=1)
         frame_actions.columnconfigure(1, weight=1)
@@ -482,8 +483,8 @@ class ToolkitGUI:
         if success:
              self._log(f"Success! Saved to {os.path.basename(output_path)}")
              messagebox.showinfo("Export Complete", 
-                f"Course Package Created:\n{output_path}\n\nIMPORTANT SAFETY NOTICE:\n"
-                "1. Create a NEW, EMPTY Sandbox Course in Canvas.\n"
+                f"Course Package Created:\n{output_path}\n\nIMPORTANT NEXT STEPS:\n"
+                "1. Create a NEW, EMPTY course in Canvas to use as a test space.\n"
                 "2. Import this file into that empty course.\n"
                 "3. Review all changes BEFORE moving content to a live semester."
              )
@@ -649,12 +650,14 @@ class ToolkitGUI:
         return result["text"]
 
     def _update_ai_button_visibility(self):
-        """Changes AI setup button text based on status."""
-        if not hasattr(self, 'btn_ai_setup'): return
+        """Changes AI status label text."""
+        if not hasattr(self, 'lbl_ai_status'): return
         if self.api_key:
-            self.btn_ai_setup.config(text="✅ AI Assistant is Ready (Click to Change Key)", style="TButton")
+            self.lbl_ai_status.config(text="✅ AI Assistant is Ready", foreground="green")
+            self.btn_batch_ai.config(state="normal")
         else:
-            self.btn_ai_setup.config(text="✨ Step 0: Set Up AI Assistant (Recommended)", style="Action.TButton")
+            self.lbl_ai_status.config(text="✨ AI Optional: See 'Advanced' menu to setup", foreground="gray")
+            self.btn_batch_ai.config(state="disabled")
 
     def _disable_buttons(self):
         """Gray out all action buttons while a task is running."""
@@ -743,9 +746,14 @@ class ToolkitGUI:
                 for file in files:
                     if file.endswith('.html'):
                         path = os.path.join(root, file)
-                        if interactive_fixer.run_auto_fixer(path, self.gui_handler):
+                        success, fixes = interactive_fixer.run_auto_fixer(path, self.gui_handler)
+                        if success:
                             count += 1
-            self.gui_handler.log(f"Total files auto-fixed: {count}")
+                            if fixes:
+                                self.gui_handler.log(f"   [FIXED] {file}:")
+                                for fix in fixes:
+                                    self.gui_handler.log(f"    - {fix}")
+            self.gui_handler.log(f"Finished. Total files auto-fixed: {count}")
 
         self._run_task_in_thread(task, "Auto-Fixer")
 
@@ -845,7 +853,7 @@ class ToolkitGUI:
         For instructions and the story behind this project, please see the README.md file.
 
         Safety First:
-        - Always use a Canvas Sandbox for testing.
+        - Always use an empty Canvas course for testing.
         - You are the expert—the tool helps, but you provide the final "Human-in-the-Loop" review.
         """
         

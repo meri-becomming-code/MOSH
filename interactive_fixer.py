@@ -541,13 +541,13 @@ def run_auto_fixer(filepath, io_handler=None):
     
     import run_fixer
     try:
-        remediated = run_fixer.remediate_html_file(filepath)
+        remediated, fixes = run_fixer.remediate_html_file(filepath)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(remediated)
-        return True
+        return True, fixes
     except Exception as e:
         io_handler.log(f"  [ERROR] Auto-fix failed for {os.path.basename(filepath)}: {e}")
-        return False
+        return False, []
 
 def main_interactive_mode(io_handler=None):
     if io_handler is None: io_handler = FixerIO()
