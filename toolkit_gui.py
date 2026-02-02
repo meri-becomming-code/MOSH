@@ -1,5 +1,5 @@
-# Created by Dr. Meri Kasprak.
-# Released freely under the MOSH License. USE AT YOUR OWN RISK.
+# Created by Meri Kasprak with the assistance of Gemini.
+# Released freely under the GNU General Public License v3.0. USE AT YOUR OWN RISK.
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, scrolledtext, Toplevel, Menu, ttk
@@ -218,7 +218,7 @@ class ToolkitGUI:
         sidebar.pack(side="left", fill="y")
         
         # Logo Area
-        lbl_logo = ttk.Label(sidebar, text="MOSH's\nTOOLKIT", style="Sidebar.TLabel", font=("Segoe UI", 16, "bold"), justify="center")
+        lbl_logo = ttk.Label(sidebar, text="MOSH'S\nTOOLKIT", style="Sidebar.TLabel", font=("Segoe UI", 16, "bold"), justify="center")
         lbl_logo.pack(pady=20, padx=10)
         
         ttk.Label(sidebar, text="(Making Online Spaces Helpful)", style="Sidebar.TLabel", font=("Segoe UI", 8, "italic")).pack(pady=(0, 5))
@@ -682,7 +682,8 @@ class ToolkitGUI:
         MOSH's Toolkit is designed to help educators create accessible online spaces. This tool was built to bridge the gap between complex accessibility requirements and everyday teaching.
 
         License & Spirit:
-        - Licensed under GNU GPL v3.0.
+        - This is solely the work of Meri Kasprak with the assistance of Gemini.
+        - Licensed under GNU General Public License version 3.
         - Keep it Free: Non-commercial, open-source software.
         - Keep it Improving: Share your improvements freely.
         - Open & Shared: Released for the greater good of the academic community.

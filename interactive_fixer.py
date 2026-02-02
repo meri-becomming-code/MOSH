@@ -1,6 +1,5 @@
-# Created by Dr. Meri Kasprak.
-# Dedicated to the academic community to make the world a slightly better, more accessible place.
-# Released freely under the GNU GPLv3 License. USE AT YOUR OWN RISK.
+# Created by Meri Kasprak with the assistance of Gemini.
+# Released freely under the GNU General Public License version 3. USE AT YOUR OWN RISK.
 
 import os
 import sys

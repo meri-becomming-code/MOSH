@@ -1,4 +1,4 @@
-# MCC Faculty ADA Toolkit (2026 Edition)
+# MOSH Faculty ADA Toolkit (2026 Edition)
 
 This toolkit helps you audit and fix accessibility (ADA) issues in your HTML course content.
 

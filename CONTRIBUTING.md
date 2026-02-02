@@ -1,4 +1,4 @@
-# Contributing to MCC Accessibility Toolkit
+# Contributing to MOSH Accessibility Toolkit
 
 Thank you for your interest in making education more accessible! We value all contributions, from code fixes to documentation updates.
 
