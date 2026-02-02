@@ -19,7 +19,10 @@ def remediate_html_file(filepath):
     1. Clean Strategy (Toolkit 1): Strips bad tags/styles without forcing layout.
     2. Code Strategy (Toolkit 2): Applies "Deep Obsidian" theme to code blocks.
     3. Structural Fixes: Tables, Headings, Images, Iframes.
+    
+    Returns: (remediated_html_str, fix_list)
     """
+    fixes = []
     print(f"Processing {os.path.basename(filepath)}...")
     with open(filepath, 'r', encoding='utf-8') as f:
         html_content = f.read()
@@ -63,6 +66,7 @@ def remediate_html_file(filepath):
         if not meta_viewport:
             new_meta = soup.new_tag('meta', attrs={'name': 'viewport', 'content': 'width=device-width, initial-scale=1'})
             head.append(new_meta)
+            fixes.append("Added mobile viewport meta tag")
 
     # Ensure main div has lang='en' (or inherits from doc)
     main_div = soup.find('div')
@@ -84,8 +88,10 @@ def remediate_html_file(filepath):
         html_lang = soup.html.get('lang') if soup.html else None
         if html_lang:
             main_div['lang'] = html_lang
+            fixes.append(f"Applied language '{html_lang}' to main container")
         else:
             main_div['lang'] = 'en'
+            fixes.append("Applied default language 'en' to main container")
 
     # --- Part 3: Content Styling Cleanup (REMOVED) ---
     # We are NO LONGER stripping styles globally. 
@@ -109,6 +115,7 @@ def remediate_html_file(filepath):
             "font-family: 'Courier New', monospace; "
             "white-space: pre;"
         )
+        fixes.append("Applied 'Deep Obsidian' theme to code block")
         
         # C. Syntax Highlighting (Basic Heuristics)
         for span in pre.find_all('span'):
@@ -147,6 +154,7 @@ def remediate_html_file(filepath):
             caption['style'] = "text-align: left; font-weight: bold; margin-bottom: 10px;"
             caption.string = "Information Table" 
             table.insert(0, caption)
+            fixes.append("Added 'Information Table' caption to table")
         
         # Scope and Header Logic
         first_row = table.find('tr')
@@ -179,6 +187,7 @@ def remediate_html_file(filepath):
                 # Apply 13A Style (Dark Purple, Italic, Margin)
                 tagline['style'] = "margin-top: 10px; margin-left: 15px; font-style: italic; color: #4b3190;"
                 tagline.insert_after(Comment("ADA FIX: Refactored tagline to 13A Standard (High Contrast)"))
+                fixes.append("Refactored header tagline for better contrast and layout")
 
     # 1. Clear old warnings
     for comment in soup.find_all(string=lambda text: isinstance(text, Comment) and "ADA FIX" in text):
@@ -194,6 +203,7 @@ def remediate_html_file(filepath):
         if main_div:
             main_div.insert(0, new_h2)
             new_h2.insert_after(Comment("ADA FIX: Inserted H2 based on page title"))
+            fixes.append(f"Inserted H2 header: '{title_text}'")
         headings = [new_h2]
     
     # 2. Leveling
@@ -204,6 +214,7 @@ def remediate_html_file(filepath):
             old_tag = headings[0].name
             headings[0].name = 'h2'
             headings[0].insert_before(Comment(f"ADA FIX: Forced {old_tag} to H2"))
+            fixes.append(f"Forced header '{headings[0].get_text()[:30]}' from {old_tag} to H2")
             last_level = 2
         else:
             last_level = first_level
@@ -216,6 +227,7 @@ def remediate_html_file(filepath):
                 old_tag = h.name
                 h.name = f"h{new_level}"
                 h.insert_before(Comment(f"ADA FIX: Demoted {old_tag} to H{new_level}"))
+                fixes.append(f"Fixed heading gap: Demoted '{h.get_text()[:30]}' to H{new_level}")
             last_level = int(h.name[1])
 
     # --- Part 7: Images (Visual Markers & Responsiveness) ---
@@ -235,7 +247,7 @@ def remediate_html_file(filepath):
                 img['style'] = style.rstrip(';') + "; " + new_style_part
             else:
                 img['style'] = new_style_part
-        
+            fixes.append(f"Made image responsive: {os.path.basename(img.get('src', 'unknown'))}")
         # 7b. Alt Text Logic
         if 'alt' not in img.attrs:
             needs_fix = True
@@ -255,35 +267,39 @@ def remediate_html_file(filepath):
             warning_span = soup.new_tag('span', style="color:red; font-weight:bold; border:1px solid red; padding:2px;")
             warning_span.string = f"[ADA FIX: {reason}]"
             img.insert_after(warning_span)
+            fixes.append(f"Flagged image for review: {reason}")
 
     # --- Part 8: Links & Iframes ---
     # Remove empty links
     for a in soup.find_all('a'):
         if not a.get_text(strip=True) and not a.find_all(True):
+            fixes.append(f"Removed empty link to '{a.get('href', 'unknown')}'")
             a.extract()
     
-    # Iframe Titles (Panorama)
-    for iframe in soup.find_all('iframe'):
         if not iframe.has_attr('title') or not iframe['title'].strip():
             iframe['title'] = "Embedded Content"
             iframe.insert_after(Comment("ADA FIX: Added generic title to iframe"))
+            fixes.append("Added title to embedded content (iframe)")
 
-    return str(soup)
+    # Deduplicate fixes
+    unique_fixes = list(set(fixes))
+    return str(soup), unique_fixes
 
 def batch_remediate_v3(root_dir):
-    count = 0
+    report = {}
     for root, dirs, files in os.walk(root_dir):
         for file in files:
             if file.endswith('.html'):
                 try:
                     path = os.path.join(root, file)
-                    remediated = remediate_html_file(path)
-                    with open(path, 'w', encoding='utf-8') as f:
-                        f.write(remediated)
-                    count += 1
+                    remediated, fixes = remediate_html_file(path)
+                    if fixes:
+                        with open(path, 'w', encoding='utf-8') as f:
+                            f.write(remediated)
+                        report[file] = fixes
                 except Exception as e:
                     print(f"Error checking {file}: {e}")
-    return count
+    return report
 
 if __name__ == "__main__":
     import sys
@@ -294,12 +310,18 @@ if __name__ == "__main__":
         target_path = input("Enter path to scan: ").strip('"')
     
     if os.path.isdir(target_path):
-        total = batch_remediate_v3(target_path)
-        print(f"Done. Remediated {total} files.")
+        report = batch_remediate_v3(target_path)
+        print(f"Done. Remediated {len(report)} files.")
+        for file, fixes in report.items():
+            print(f"  [{file}]")
+            for fix in fixes:
+                print(f"    - {fix}")
     elif os.path.isfile(target_path):
-        remediated = remediate_html_file(target_path)
+        remediated, fixes = remediate_html_file(target_path)
         with open(target_path, 'w', encoding='utf-8') as f:
             f.write(remediated)
-        print(f"Done. Remediated 1 file.")
+        print(f"Done. Fixes in {os.path.basename(target_path)}:")
+        for fix in fixes:
+            print(f"  - {fix}")
     else:
         print("Invalid directory.")
