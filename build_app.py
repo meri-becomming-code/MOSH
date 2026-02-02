@@ -17,7 +17,7 @@ def build():
 
     args = [
         'toolkit_gui.py',
-        '--name=MCC_ADA_Toolkit',
+        '--name=MOSH_ADA_Toolkit',
         '--noconfirm',
         '--onefile',
         '--windowed',  # No console window

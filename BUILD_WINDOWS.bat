@@ -1,5 +1,5 @@
 @echo off
-TITLE Build MCC ADA Toolkit (Windows)
+TITLE Build MOSH ADA Toolkit (Windows)
 ECHO Installing Dependencies...
 pip install -r requirements.txt
 pip install pyinstaller
