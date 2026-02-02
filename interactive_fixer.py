@@ -8,6 +8,8 @@ from bs4 import BeautifulSoup
 import urllib.request
 import urllib.parse
 import re
+import base64
+import tempfile
 
 # --- Configuration ---
 BAD_ALT_TEXT = ['image', 'photo', 'picture', 'spacer', 'undefined', 'null']
@@ -15,8 +17,41 @@ BAD_LINK_TEXT = ['click here', 'here', 'read more', 'link', 'more info', 'info']
 
 class FixerIO:
     """Handles Input/Output. Subclass this for GUI integration."""
+    def __init__(self):
+        self.stop_requested = False
+        self.alt_memory_file = "alt_text_memory.json"
+        self.memory = self._load_memory()
+
+    def _load_memory(self):
+        if os.path.exists(self.alt_memory_file):
+            try:
+                with open(self.alt_memory_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except: return {}
+        return {}
+
+    def save_memory(self):
+        try:
+            with open(self.alt_memory_file, 'w', encoding='utf-8') as f:
+                json.dump(self.memory, f, indent=4)
+        except: pass
+
     def log(self, message):
         print(message)
+
+    def is_stopped(self):
+        """Check if skip or stop was requested."""
+        return self.stop_requested
+        
+    def prompt_image(self, message, image_path, context=None):
+        """Ask user for input while showing an image and context."""
+        print(f"Context: {context}")
+        return input(message)
+
+    def prompt_link(self, message, help_url, context=None):
+        """Ask user for input while showing a link and context."""
+        print(f"Context: {context}")
+        return input(message)
 
     def prompt(self, message, help_url=None):
         """Ask user for input. help_url is optional for clickable links."""
@@ -197,8 +232,8 @@ def resolve_image_path(src, filepath, root_dir, io_handler):
         
         # 2. Handle Canvas Token (IMS-CC-FILEBASE)
         if "$IMS-CC-FILEBASE$" in clean_src:
-            # Replace token with 'web_resources' common folder
-            expanded = clean_src.replace("$IMS-CC-FILEBASE$", "web_resources")
+            # Replace token with empty string (assuming we are at project root or subfolder)
+            expanded = clean_src.replace("$IMS-CC-FILEBASE$/", "").replace("$IMS-CC-FILEBASE$", "")
             expanded = expanded.replace('/', os.sep).replace('\\', os.sep)
             if expanded.startswith(os.sep): expanded = expanded[1:]
             
@@ -244,6 +279,19 @@ def resolve_image_path(src, filepath, root_dir, io_handler):
         if os.path.exists(c):
             return c
             
+    # 3. Nuclear Option 0: Base64 fallback (Word often does this)
+    if clean_src.startswith('data:image'):
+        # Save to a temp file so GUI can show it
+        try:
+            header, data = clean_src.split(',', 1)
+            ext = header.split('/')[1].split(';')[0]
+            content = base64.b64decode(data)
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
+            tmp.write(content)
+            tmp.close()
+            return tmp.name
+        except: pass
+
     # 4. Nuclear Option: Fuzzy / Recursive Search
     target_name = os.path.basename(clean_src)
     
@@ -266,6 +314,16 @@ def resolve_image_path(src, filepath, root_dir, io_handler):
                     
     return None
 
+def get_context(tag):
+    """Get surrounding text context for a tag (parent paragraph or surrounding text)."""
+    parent = tag.find_parent(['p', 'div', 'li', 'td', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+    if parent:
+        text = parent.get_text(strip=True)
+        if len(text) > 300:
+            return text[:297] + "..."
+        return text
+    return "No surrounding text context found."
+
 def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
     """Scans a single file and prompts for fixes."""
     if io_handler is None:
@@ -283,6 +341,10 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
     io_handler.log(f"[INFO] Using Image Resolution Logic v2.1")
     if root_dir:
         io_handler.log(f"[INFO] Root Dir: {root_dir}")
+
+    # --- 0. Stop Check ---
+    if io_handler.is_stopped():
+        return
 
     # --- 1. Image Remediation ---
     images = soup.find_all('img')
@@ -303,36 +365,69 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
         elif "[fix_me]" in alt.lower():
              issue = "Marked as [FIX_ME]"
         
+        # [NEW] Check for Mammoth-style placeholders or descriptions
+        elif "image" in alt.lower() and len(alt) > 10:
+             # Mammoth often puts the 'title' or 'description' in the alt tag if present.
+             # If it's not a 'bad' word, might be a valid suggestion.
+             issue = "Review suggested alt text"
+        
         if issue:
             io_handler.log(f"\n  [ISSUE #{i+1}] Image: {src}")
             io_handler.log(f"    Reason: {issue}")
             io_handler.log(f"    Current Alt: '{alt}'")
             
+            # [NEW] Check Memory Bank First
+            mem_key = os.path.basename(src)
+            if mem_key in io_handler.memory:
+                suggested_alt = io_handler.memory[mem_key]
+                io_handler.log(f"    [Memory Bank] Found saved alt text: '{suggested_alt}'")
+                img['alt'] = suggested_alt
+                modified = True
+                io_handler.log("    -> Auto-applied from memory.")
+                continue
+
             # Resolve image path using helper
             if root_dir: 
                 io_handler.log(f"    [Trace] Resolution Root: {root_dir}")
                 
             img_full_path = resolve_image_path(src, filepath, root_dir, io_handler)
+            context = get_context(img)
             
             if not img_full_path:
                  io_handler.log(f"    [Warning] Could not find local image file.")
 
             if img_full_path and os.path.exists(img_full_path):
-                 choice = io_handler.prompt_image("    > Enter new Alt Text (or Press Enter to skip): ", img_full_path).strip()
+                 prompt_text = f"    > Enter new Alt Text (Press Enter to keep '{alt}'): " if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip): "
+                 choice = io_handler.prompt_image(prompt_text, img_full_path, context=context).strip()
             else:
-                 choice = io_handler.prompt("    > Enter new Alt Text (or Press Enter to skip): ").strip()
+                 prompt_text = f"    > Enter new Alt Text (Press Enter to keep '{alt}'): " if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip): "
+                 choice = io_handler.prompt(prompt_text).strip()
             
+            # If they enter text, save to memory
             if choice:
                 img['alt'] = choice
+                io_handler.memory[mem_key] = choice
+                io_handler.save_memory()
                 # Remove any warning spans/markers if they exist
                 next_node = img.find_next_sibling()
                 if next_node and next_node.name == 'span' and "ADA FIX" in next_node.get_text():
                      next_node.extract()
                 
                 modified = True
-                io_handler.log(f"    -> Updated to: '{choice}'")
+                io_handler.log(f"    -> Updated and saved to memory: '{choice}'")
+                
+            # If "Review suggest alt" and they press enter, it's NOT a skip, it's a keep.
+            elif not choice and issue == "Review suggested alt text":
+                choice = alt
+                io_handler.memory[mem_key] = choice
+                io_handler.save_memory()
+                img['alt'] = choice
+                modified = True
+                io_handler.log(f"    -> Kept suggested and saved to memory: '{choice}'")
             else:
                 io_handler.log("    -> Skipped.")
+            
+            if io_handler.is_stopped(): return
 
     # --- 2. Link Remediation ---
     links = soup.find_all('a')
@@ -363,6 +458,7 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             
             # Generate Suggestion
             suggestion = get_link_suggestion(href)
+            context = get_context(a)
             
             # Resolve Link Path for "Clickable" help
             # (Reusing image resolution logic since it does good absolute path finding)
@@ -370,7 +466,17 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             if not help_url and href.startswith('http'):
                 help_url = href # Web links are fine as-is
             
-            if suggestion:
+            msg = f"    > Enter new text for this link (Press Enter to use '{suggestion}'): " if suggestion else "    > Enter new text for this link (or Press Enter to skip): "
+            choice = io_handler.prompt_link(msg, help_url, context=context)
+            
+            if choice and choice.strip():
+                a.string = choice.strip()
+                modified = True
+                io_handler.log(f"    -> Updated to: '{choice.strip()}'")
+            else:
+                io_handler.log("    -> Skipped.")
+            
+            if io_handler.is_stopped(): return
                  io_handler.log(f"    [TIP] Suggested Text: \"{suggestion}\"")
                  prompt_text = f"    > Enter new Link Text (Press Enter to use '{suggestion}'): "
             else:
@@ -388,6 +494,8 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
                  io_handler.log(f"    -> Updated to: '{suggestion}' (Used Suggestion)")
             else:
                 io_handler.log("    -> Skipped.")
+            
+            if io_handler.is_stopped(): return
 
     # --- 3. Iframe Remediation ---
     iframes = soup.find_all('iframe')
@@ -434,6 +542,8 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
                 io_handler.log(f"    -> Updated to: '{suggestion}' (Used Suggestion)")
             else:
                 io_handler.log("    -> Skipped.")
+            
+            if io_handler.is_stopped(): return
 
     if modified:
         save_html(filepath, soup, io_handler)
@@ -509,6 +619,7 @@ def main_interactive_mode(io_handler=None):
         io_handler.log("\nRunning Auto-Fixer on all files...")
         count = 0
         for filepath in html_files:
+            if io_handler.is_stopped(): break
             if run_auto_fixer(filepath, io_handler):
                 count += 1
         io_handler.log(f"Done. Auto-fixed {count} files.")
@@ -520,6 +631,7 @@ def main_interactive_mode(io_handler=None):
     io_handler.log("Scanning for missing descriptions and titles...")
     
     for filepath in html_files:
+        if io_handler.is_stopped(): break
         scan_and_fix_file(filepath, io_handler, root_dir)
         
     io_handler.log("\n==========================================")

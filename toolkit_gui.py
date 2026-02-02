@@ -27,6 +27,7 @@ class ThreadSafeGuiHandler(interactive_fixer.FixerIO):
     Handles logging and user input via thread-safe events.
     """
     def __init__(self, root, log_queue):
+        super().__init__()
         self.root = root
         self.log_queue = log_queue
         # Queues for input requests/responses
@@ -39,25 +40,26 @@ class ThreadSafeGuiHandler(interactive_fixer.FixerIO):
 
     def prompt(self, message):
         """Ask user for input (Blocking from worker thread perspective)."""
+        if self.is_stopped(): return ""
         self.input_request_queue.put(('prompt', message, None))
         return self.input_response_queue.get()
 
     def confirm(self, message):
         """Ask user for Yes/No (Blocking)."""
+        if self.is_stopped(): return False
         self.input_request_queue.put(('confirm', message, None))
         return self.input_response_queue.get()
         
-    def prompt_image(self, message, image_path):
-        """Ask user for input while showing an image."""
-        self.input_request_queue.put(('prompt_image', message, image_path))
+    def prompt_image(self, message, image_path, context=None):
+        """Ask user for input while showing an image and context."""
+        if self.is_stopped(): return ""
+        self.input_request_queue.put(('prompt_image', message, (image_path, context)))
         return self.input_response_queue.get()
 
-    def prompt(self, message, help_url=None):
-        """Ask user for input, optionally showing a clickable link."""
-        if help_url:
-             self.input_request_queue.put(('prompt_link', message, help_url))
-        else:
-             self.input_request_queue.put(('prompt', message, None))
+    def prompt_link(self, message, help_url, context=None):
+        """Ask user for input while showing a link and context."""
+        if self.is_stopped(): return ""
+        self.input_request_queue.put(('prompt_link', message, (help_url, context)))
         return self.input_response_queue.get()
 
 # Colors
@@ -221,8 +223,12 @@ class ToolkitGUI:
         lbl_logo = ttk.Label(sidebar, text="MOSH'S\nTOOLKIT", style="Sidebar.TLabel", font=("Segoe UI", 16, "bold"), justify="center")
         lbl_logo.pack(pady=20, padx=10)
         
-        ttk.Label(sidebar, text="(Making Online Spaces Helpful)", style="Sidebar.TLabel", font=("Segoe UI", 8, "italic")).pack(pady=(0, 5))
         ttk.Label(sidebar, text="v2026.1", style="Sidebar.TLabel", font=("Segoe UI", 8)).pack(pady=(0, 20))
+        
+        # Stop Button (Persistent)
+        self.btn_stop = ttk.Button(sidebar, text="🛑 STOP PROCESSING", command=self._request_stop, style="TButton")
+        self.btn_stop.pack(pady=10, padx=10, fill="x")
+        self.btn_stop.config(state='disabled')
 
         # 2. Main Content Area
         content = ttk.Frame(self.root, padding="20 20 20 20")
@@ -271,13 +277,20 @@ class ToolkitGUI:
         
         # Friendly Button Names
         self.btn_auto = ttk.Button(frame_actions, text="Auto-Fix Issues\n(Headings, Tables)", command=self._run_auto_fixer, style="Action.TButton")
-        self.btn_auto.grid(row=0, column=0, padx=5, sticky="ew")
+        self.btn_auto.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         
         self.btn_inter = ttk.Button(frame_actions, text="Guided Review\n(Alt Text, Links)", command=self._run_interactive, style="Action.TButton")
-        self.btn_inter.grid(row=0, column=1, padx=5, sticky="ew")
+        self.btn_inter.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         
-        self.btn_audit = ttk.Button(frame_actions, text="Create Report\n(Audit JSON)", command=self._run_audit, style="Action.TButton")
-        self.btn_audit.grid(row=0, column=2, padx=5, sticky="ew")
+        self.btn_audit = ttk.Button(frame_actions, text="Quick Report\n(Audit JSON)", command=self._run_audit, style="Action.TButton")
+        self.btn_audit.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        # Row 2 (Advanced)
+        self.btn_batch_ai = ttk.Button(frame_actions, text="✨ Batch AI\n(Suggest Alt Text)", command=self._run_batch_ai, style="Action.TButton")
+        self.btn_batch_ai.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+
+        self.btn_link_audit = ttk.Button(frame_actions, text="🔗 Link Auditor\n(Find Broken Links)", command=self._run_link_audit, style="Action.TButton")
+        self.btn_link_audit.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
         
         frame_actions.columnconfigure(0, weight=1)
         frame_actions.columnconfigure(1, weight=1)
@@ -401,48 +414,55 @@ class ToolkitGUI:
     def _process_inputs(self):
         """Poll for input requests from the worker thread."""
         try:
-            req = self.gui_handler.input_request_queue.get_nowait()
-            kind, message, payload = req
-            
-            response = None
-            if kind == 'prompt':
-                response = simpledialog.askstring("Input Required", message, parent=self.root)
-                if response is None: response = "" 
-            elif kind == 'confirm':
-                response = messagebox.askyesno("Confirm", message, parent=self.root)
-            elif kind == 'prompt_image':
-                response = self._show_image_dialog(message, payload)
-            elif kind == 'prompt_link':
-                response = self._show_link_dialog(message, payload)
-            
-            self.gui_handler.input_response_queue.put(response)
+            while True:
+                req = self.gui_handler.input_request_queue.get_nowait()
+                kind, message, payload = req
+                
+                response = None
+                if kind == 'prompt':
+                    response = simpledialog.askstring("Input Required", message, parent=self.root)
+                    if response is None: response = "" 
+                elif kind == 'confirm':
+                    response = messagebox.askyesno("Confirm", message, parent=self.root)
+                elif kind == 'prompt_image':
+                    path, context = payload
+                    response = self._show_image_dialog(message, path, context)
+                elif kind == 'prompt_link':
+                    href, context = payload
+                    response = self._show_link_dialog(message, href, context)
+                
+                self.gui_handler.input_response_queue.put(response)
         except queue.Empty:
             pass
         self.root.after(100, self._process_inputs)
         
-    def _show_image_dialog(self, message, image_path):
-        """Shows a custom dialog with the image and a text input."""
+    def _show_image_dialog(self, message, image_path, context=None):
+        """Custom dialog to show an image and prompt for alt text."""
         dialog = Toplevel(self.root)
-        dialog.title("Image Check (Interactive)")
-        dialog.geometry("700x650")
-        dialog.lift()
-        dialog.focus_force()
-        dialog.grab_set() # Make it modal
+        dialog.title("Image Review")
+        dialog.geometry("600x650") 
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Context area
+        if context:
+            ctx_frame = ttk.LabelFrame(dialog, text="Surrounding Text Context", padding=5)
+            ctx_frame.pack(fill="x", padx=10, pady=5)
+            tk.Label(ctx_frame, text=context, wraplength=550, font=("Segoe UI", 9, "italic"), justify="left").pack()
         
         # Load and resize image
         try:
             pil_img = Image.open(image_path)
-            # Max dimensions
             pil_img.thumbnail((500, 350)) 
             tk_img = ImageTk.PhotoImage(pil_img)
             
             lbl_img = tk.Label(dialog, image=tk_img)
-            lbl_img.image = tk_img # Keep reference
+            lbl_img.image = tk_img 
             lbl_img.pack(pady=10)
         except Exception as e:
             tk.Label(dialog, text=f"[Could not load image: {e}]", fg="red").pack(pady=10)
         
-        tk.Label(dialog, text=message, wraplength=550, font=("Arial", 10)).pack(pady=5)
+        tk.Label(dialog, text=message, wraplength=550, font=("Segoe UI", 10)).pack(pady=5)
         
         # Input Area
         entry_var = tk.StringVar()
@@ -450,115 +470,168 @@ class ToolkitGUI:
         entry.pack(pady=5)
         entry.focus_set()
         
-        lbl_status = tk.Label(dialog, text="", fg="blue", font=("Arial", 9, "italic"))
+        lbl_status = tk.Label(dialog, text="", fg="blue", font=("Segoe UI", 9, "italic"))
         lbl_status.pack(pady=2)
 
-        # AI Function
         def suggest_ai():
             if not self.api_key:
-                messagebox.showwarning("No API Key", "Please go to 'Settings' > 'Set Gemini API Key' first.")
+                messagebox.showwarning("No API Key", "Please set your Gemini Key in Settings first.")
                 return
-            
-            lbl_status.config(text="Thinking... (Querying Gemini)", fg="blue")
+            lbl_status.config(text="Thinking...", fg="blue")
             dialog.update()
-            
             def run_ai():
                 text, err = ai_helper.generate_alt_text(image_path, self.api_key)
-                if err:
-                    lbl_status.config(text=f"AI Error: {err}", fg="red")
-                else:
+                if err: lbl_status.config(text=f"Error: {err}", fg="red")
+                else: 
                     entry_var.set(text)
-                    lbl_status.config(text="Suggestion applied!", fg="green")
-            
-            # Run in thread to avoid freezing UI
+                    lbl_status.config(text="Suggested!", fg="green")
             threading.Thread(target=run_ai, daemon=True).start()
 
-        # Result container
         result = {"text": ""}
-        
         def on_ok(event=None):
             result["text"] = entry_var.get()
             dialog.destroy()
-            
         def on_skip():
             result["text"] = "" 
             dialog.destroy()
             
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=15)
-        
-        tk.Button(btn_frame, text="✨ Suggest Alt Text (AI)", command=suggest_ai, bg="#E1BEE7").pack(side="left", padx=20)
+        tk.Button(btn_frame, text="✨ Suggest Alt Text (AI)", command=suggest_ai, bg="#E1BEE7").pack(side="left", padx=10)
         tk.Button(btn_frame, text="Update Alt Text", command=on_ok, bg="#dcedc8", width=15).pack(side="left", padx=5)
         tk.Button(btn_frame, text="Skip / Ignore", command=on_skip, width=15).pack(side="left", padx=5)
         
         dialog.bind('<Return>', on_ok)
-        
-        # Wait for window to close
         self.root.wait_window(dialog)
         return result["text"]
 
-    def _show_link_dialog(self, message, help_url):
-         """Shows a custom dialog with a generic input and an 'Open Link' button."""
-         dialog = Toplevel(self.root)
-         dialog.title("Link Check (Interactive)")
-         dialog.geometry("600x250")
-         dialog.lift()
-         dialog.focus_force()
-         dialog.grab_set() 
+    def _show_link_dialog(self, message, href, context=None):
+        """Custom dialog to show link details and prompt for text."""
+        dialog = Toplevel(self.root)
+        dialog.title("Link Review")
+        dialog.geometry("550x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        if context:
+            ctx_frame = ttk.LabelFrame(dialog, text="Surrounding Text Context", padding=5)
+            ctx_frame.pack(fill="x", padx=10, pady=5)
+            tk.Label(ctx_frame, text=context, wraplength=500, font=("Segoe UI", 9, "italic"), justify="left").pack()
+            
+        tk.Label(dialog, text=message, wraplength=500, font=("Segoe UI", 10)).pack(pady=10)
          
-         tk.Label(dialog, text=message, wraplength=550, font=("Arial", 10)).pack(pady=20)
-         
-         # Link Button
-         def open_link():
-             webbrowser.open(help_url)
+        def open_link():
+             import webbrowser
+             webbrowser.open(href)
              
-         if help_url:
+        if href:
              btn_link = tk.Button(dialog, text=f"🌐 Open Link / File (Verify)", command=open_link, bg="#BBDEFB", cursor="hand2")
              btn_link.pack(pady=5)
-             tk.Label(dialog, text=f"Target: {os.path.basename(help_url) if len(help_url) < 50 else 'External Link'}", font=("Arial", 8, "italic"), fg="gray").pack()
+             tk.Label(dialog, text=f"Target: {href[:60] + '...' if len(href) > 60 else href}", font=("Segoe UI", 8, "italic"), fg="gray").pack()
  
-         # Input Area
-         entry_var = tk.StringVar()
-         entry = tk.Entry(dialog, textvariable=entry_var, width=60)
-         entry.pack(pady=15)
-         entry.focus_set()
-         
-         # Result container
-         result = {"text": ""}
-         
-         def on_ok(event=None):
-             result["text"] = entry_var.get()
-             dialog.destroy()
-             
-         def on_skip():
-             result["text"] = "" 
-             dialog.destroy()
-             
-         btn_frame = tk.Frame(dialog)
-         btn_frame.pack(pady=10)
-         
-         tk.Button(btn_frame, text="Update Link Text", command=on_ok, bg="#dcedc8", width=15).pack(side="left", padx=5)
-         tk.Button(btn_frame, text="Skip / Ignore", command=on_skip, width=15).pack(side="left", padx=5)
-         
-         dialog.bind('<Return>', on_ok)
-         
-         # Wait for window to close
-         self.root.wait_window(dialog)
-         return result["text"]
+        entry_var = tk.StringVar()
+        entry = tk.Entry(dialog, textvariable=entry_var, width=60)
+        entry.pack(pady=15)
+        entry.focus_set()
+        
+        result = {"text": ""}
+        def on_ok(event=None):
+            result["text"] = entry_var.get()
+            dialog.destroy()
+        def on_skip():
+            result["text"] = "" 
+            dialog.destroy()
+            
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="Update Link Text", command=on_ok, bg="#dcedc8", width=15).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Skip / Ignore", command=on_skip, width=15).pack(side="left", padx=5)
+        
+        dialog.bind('<Return>', on_ok)
+        self.root.wait_window(dialog)
+        return result["text"]
 
     def _disable_buttons(self):
-        self.btn_auto.config(state='disabled')
+        self.btn_wizard.config(state='disabled')
         self.btn_inter.config(state='disabled')
+        self.btn_batch_ai.config(state='disabled')
         self.btn_audit.config(state='disabled')
+        self.btn_stop.config(state='normal')
+        self.gui_handler.stop_requested = False
         self.is_running = True
 
     def _enable_buttons(self):
-        self.btn_auto.config(state='normal')
+        self.btn_wizard.config(state='normal')
         self.btn_inter.config(state='normal')
+        self.btn_batch_ai.config(state='normal')
         self.btn_audit.config(state='normal')
+        self.btn_stop.config(state='disabled')
         self.is_running = False
 
-    # --- Task Wrappers ---
+    def _request_stop(self):
+        """Triggers a stop request."""
+        if self.is_running:
+            self.gui_handler.stop_requested = True
+            self.gui_handler.log("\n[STOP] Stop requested. Finishing current file and exiting...")
+            self.btn_stop.config(state='disabled')
+
+    def _run_batch_ai(self):
+        """Phase 2: Scans all images and applies AI suggestions in bulk."""
+        if not self.api_key:
+            messagebox.showwarning("API Key Required", "Please set your Gemini API Key in Settings first.")
+            return
+
+        def task():
+            self.gui_handler.log(f"--- Starting Batch AI Alt-Text ---")
+            found_images = []
+            for root, dirs, files in os.walk(self.target_dir):
+                for file in files:
+                    if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                        found_images.append(os.path.join(root, file))
+            
+            if not found_images:
+                self.gui_handler.log("No images found to process.")
+                return
+
+            def on_progress(curr, total, fname, result):
+                self.gui_handler.log(f"[{curr}/{total}] {fname} -> {result[:40]}...")
+
+            results = ai_helper.batch_generate_alt_text(found_images, self.api_key, on_progress)
+            self.gui_handler.log(f"Batch complete. {len(results)} images processed.")
+            messagebox.showinfo("Batch Complete", f"Processed {len(found_images)} images.\nResults are stored in Alt-Text Memory.")
+
+        self._run_task_in_thread(task, "Batch AI Alt-Text")
+
+    def _run_link_audit(self):
+        """Phase 3: Scans for broken links and reports them."""
+        import link_auditor
+        def task():
+            report = link_auditor.audit_directory(self.target_dir, self.gui_handler)
+            if not report:
+                self.gui_handler.log("\n[SUCCESS] No broken links found!")
+                messagebox.showinfo("Audit Complete", "Course is clean! No broken links found.")
+            else:
+                self.gui_handler.log(f"\n[ISSUE] Found {len(report)} broken links.")
+                # Show report in a popup
+                self.root.after(0, lambda: self._show_audit_report(report))
+        
+        self._run_task_in_thread(task, "Link Audit")
+
+    def _show_audit_report(self, report):
+        """Displays broken links in a scrollable window."""
+        dialog = Toplevel(self.root)
+        dialog.title("Broken Link Report")
+        dialog.geometry("800x500")
+        
+        txt = tk.Text(dialog, wrap="none")
+        txt.pack(fill="both", expand=True)
+        
+        txt.insert("1.0", f"{'FILE':<30} | {'ISSUE':<20} | {'LINK':<40}\n")
+        txt.insert("end", "-"*100 + "\n")
+        for item in report:
+            txt.insert("end", f"{item['file'][:30]:<30} | {item['issue'][:20]:<20} | {item['link']}\n")
+        
+        txt.config(state='disabled')
 
     def _run_task_in_thread(self, task_func, task_name):
         if self.is_running: return
@@ -833,6 +906,7 @@ YOUR WORKFLOW:
             kept_files = [] # Track successful conversions
 
             for i, fpath in enumerate(files):
+                if self.gui_handler.is_stopped(): break
                 fname = os.path.basename(fpath)
                 ext = os.path.splitext(fpath)[1].lower().replace('.', '')
                 self.gui_handler.log(f"[{i+1}/{len(files)}] Processing: {fname}...")

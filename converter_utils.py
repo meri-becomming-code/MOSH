@@ -7,6 +7,8 @@ import shutil
 import re
 from datetime import datetime
 import zipfile
+import base64
+import uuid
 
 # --- Third Party Imports ---
 try:
@@ -117,8 +119,42 @@ def convert_docx_to_html(docx_path):
         i => em
         """
         
+        filename = os.path.splitext(os.path.basename(docx_path))[0]
+        output_dir = os.path.dirname(docx_path)
+        
+        # Image Handler for Mammoth
+        def convert_image(image):
+            # 1. Create web_resources/[filename] folder if it doesn't exist
+            safe_filename = filename.replace(" ", "_")
+            res_dir = os.path.join(output_dir, "web_resources", safe_filename)
+            if not os.path.exists(res_dir):
+                os.makedirs(res_dir)
+            
+            # 2. Extract description
+            alt_text = image.alt_text if image.alt_text else f"Image from {filename}"
+            
+            # 3. Save Image File
+            with image.open() as image_source:
+                image_bytes = image_source.read()
+            
+            # Generate unique name
+            ext = image.content_type.split('/')[-1]
+            if ext == 'jpeg': ext = 'jpg'
+            short_id = uuid.uuid4().hex[:8]
+            img_name = f"img_{short_id}.{ext}"
+            img_path = os.path.join(res_dir, img_name)
+            
+            with open(img_path, 'wb') as f:
+                f.write(image_bytes)
+            
+            # 4. Return Tag with Canvas Token (Nested Path)
+            return {
+                "src": f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{img_name}",
+                "alt": alt_text
+            }
+
         with open(docx_path, "rb") as docx_file:
-            result = mammoth.convert_to_html(docx_file, style_map=style_map)
+            result = mammoth.convert_to_html(docx_file, style_map=style_map, convert_image=mammoth.images.img_element(convert_image))
             html_content = result.value
             messages = result.messages # Warnings
 
@@ -129,8 +165,7 @@ def convert_docx_to_html(docx_path):
         # Ensure tables have some basic class for our CSS
         html_content = html_content.replace("<table>", '<table class="content-table">')
 
-        filename = os.path.splitext(os.path.basename(docx_path))[0]
-        output_path = os.path.join(os.path.dirname(docx_path), f"{filename}.html")
+        output_path = os.path.join(output_dir, f"{filename}.html")
         
         # Wrap in template
         _save_html(html_content, filename, docx_path, output_path)
@@ -235,16 +270,20 @@ def convert_ppt_to_html(ppt_path):
                     try:
                         image = shape.image
                         image_bytes = image.blob
-                        # Guess extension
                         ext = image.ext
-                        image_filename = f"slide{slide_num}_image_{shape.shape_id}.{ext}"
-                        image_full_path = os.path.join(media_path, image_filename)
+                        # Use web_resources/[filename] folder
+                        safe_filename = filename.replace(" ", "_")
+                        res_dir = os.path.join(output_dir, "web_resources", safe_filename)
+                        if not os.path.exists(res_dir): os.makedirs(res_dir)
+                        
+                        image_filename = f"slide{slide_num}_{uuid.uuid4().hex[:6]}.{ext}"
+                        image_full_path = os.path.join(res_dir, image_filename)
                         
                         with open(image_full_path, 'wb') as img_f:
                             img_f.write(image_bytes)
                             
-                        # Embed in HTML with FIX_ME
-                        rel_path = f"{media_folder_name}/{image_filename}"
+                        # Embed in HTML with Canvas Token
+                        rel_path = f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{image_filename}"
                         html_parts.append(f'<img src="{rel_path}" alt="[FIX_ME] Image from Slide {slide_num}" class="slide-image">')
                     except Exception as img_err:
                         print(f"Skipped image on slide {slide_num}: {img_err}")
@@ -298,13 +337,18 @@ def convert_pdf_to_html(pdf_path):
                     image_bytes = base_image["image"]
                     ext = base_image["ext"]
                     
-                    image_filename = f"page{page_num}_img{img_index + 1}.{ext}"
-                    image_full_path = os.path.join(media_path, image_filename)
+                    # Use web_resources/[filename] folder
+                    safe_filename = filename.replace(" ", "_")
+                    res_dir = os.path.join(output_dir, "web_resources", safe_filename)
+                    if not os.path.exists(res_dir): os.makedirs(res_dir)
+
+                    image_filename = f"page{page_num}_img{img_index + 1}_{uuid.uuid4().hex[:6]}.{ext}"
+                    image_full_path = os.path.join(res_dir, image_filename)
                     
                     with open(image_full_path, "wb") as f:
                         f.write(image_bytes)
                         
-                    rel_path = f"{media_folder_name}/{image_filename}"
+                    rel_path = f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{image_filename}"
                     html_parts.append(f'<img src="{rel_path}" alt="[FIX_ME] Image from Page {page_num}" class="content-image" style="max-width: 100%; height: auto; display: block; margin: 10px 0;">')
                 except:
                     pass
