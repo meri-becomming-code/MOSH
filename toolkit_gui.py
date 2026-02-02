@@ -150,7 +150,7 @@ class ToolkitGUI:
         
         advanced_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Advanced", menu=advanced_menu)
-        advanced_menu.add_command(label="Open Documentation (README)", command=self._open_readme)
+        advanced_menu.add_command(label="Open Documentation", command=self._show_documentation)
         advanced_menu.add_separator()
         advanced_menu.add_command(label="Toggle Theme (Light/Dark)", command=self._toggle_theme)
         
@@ -158,13 +158,62 @@ class ToolkitGUI:
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="Welcome / Dedication", command=lambda: self._show_instructions(force=True))
 
-    def _open_readme(self):
-        """Opens the README.md file in the default text editor or browser."""
-        readme_path = os.path.abspath("README.md")
-        if os.path.exists(readme_path):
-            webbrowser.open(readme_path)
-        else:
-            messagebox.showerror("Error", "README.md not found in the application directory.")
+    def _show_documentation(self):
+        """Phase 12: Shows documentation directly in the app."""
+        dialog = Toplevel(self.root)
+        dialog.title("MOSH Documentation & Tips")
+        dialog.geometry("800x600")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        colors = THEMES[self.config.get("theme", "light")]
+        dialog.configure(bg=colors["bg"])
+
+        # Title
+        tk.Label(dialog, text="MOSH Faculty ADA Toolkit Guide", font=("Segoe UI", 16, "bold"), 
+                 bg=colors["bg"], fg=colors["header"]).pack(pady=15)
+
+        # Scrolled Text for Documentation
+        txt = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("Segoe UI", 10), 
+                                       bg=colors["bg"], fg=colors["fg"], padx=15, pady=15)
+        txt.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        
+        # Insert Documentation Content
+        doc_content = """MOSH Faculty ADA Toolkit (2026 Edition)
+=====================================
+
+This toolkit helps you audit and fix accessibility (ADA) issues in your HTML course content.
+
+🚀 QUICK START WORKFLOW
+-----------------------
+1. Select Project: Click "Browse Folder" and select your exported course folder.
+2. Auto-Fix: Click "Auto-Fix Issues" to fix headings, tables, and contrast issues.
+3. Guided Review: Click "Guided Review" to write Alt Text for images and check links.
+4. Export: Click "Repackage Course (.imscc)" to create a new Canvas package.
+
+💡 TIPS FOR FACULTY
+-------------------
+- Always use a NEW, EMPTY Canvas course for testing your remediated files.
+- Alt-Text Memory: The tool remembers descriptions you've entered. If you use the same logo in multiple files, it will suggest your previous text!
+- Context Review: When writing Alt Text, look at the "Found in Context" box. It shows you the paragraph around the image to help you write better descriptions.
+- Hard-Working Logs: Check the "Activity Log" at the bottom to see exactly what structural fixes were made to each file.
+
+📦 FILE CONVERSION
+------------------
+- Use the "Conversion Wizard" to turn Word, PPT, or PDF files into Canvas-ready HTML.
+- For PDFs: The tool automatically detects Headers (H1-H3) based on font size.
+- Math Content: Canvas uses LaTeX. If your document has complex math, consider using an external tool like Mathpix Snip, then import the Word file here.
+
+⚖️ LICENSE & SPIRIT
+-------------------
+- Released under GNU General Public License version 3.
+- This is non-commercial, open-source software built for the academic community.
+- "Making Online Spaces Helpful" (MOSH) is dedicated to helping every student succeed.
+"""
+        txt.insert(tk.END, doc_content)
+        txt.config(state='disabled') # Read-only
+        
+        tk.Button(dialog, text="Close", command=dialog.destroy, width=12).pack(pady=10)
 
     def _build_styles(self):
         style = ttk.Style()
@@ -268,7 +317,10 @@ class ToolkitGUI:
         frame_browse = ttk.Frame(frame_dir)
         frame_browse.pack(fill="x")
         
-        self.lbl_dir = ttk.Entry(frame_browse)
+        mode = self.config.get("theme", "light")
+        colors = THEMES[mode]
+        
+        self.lbl_dir = tk.Entry(frame_browse, bg=colors["bg"], fg=colors["fg"], insertbackground=colors["fg"])
         self.lbl_dir.insert(0, self.target_dir)
         self.lbl_dir.pack(side="left", fill="x", expand=True, padx=(0, 5))
         
@@ -542,9 +594,8 @@ class ToolkitGUI:
     def _disable_buttons(self):
         """Gray out all action buttons while a task is running."""
         for btn in [self.btn_auto, self.btn_inter, self.btn_audit, 
-                   self.btn_batch_ai, self.btn_wizard,
-                   self.btn_word, self.btn_excel, self.btn_ppt, self.btn_pdf,
-                   self.btn_ai_setup]:
+                   self.btn_wizard, self.btn_word, self.btn_excel, 
+                   self.btn_ppt, self.btn_pdf]:
             try: btn.config(state='disabled')
             except: pass
         self.btn_stop.config(state='normal')
@@ -554,9 +605,8 @@ class ToolkitGUI:
     def _enable_buttons(self):
         """Restore all action buttons."""
         for btn in [self.btn_auto, self.btn_inter, self.btn_audit, 
-                   self.btn_batch_ai, self.btn_wizard,
-                   self.btn_word, self.btn_excel, self.btn_ppt, self.btn_pdf,
-                   self.btn_ai_setup]:
+                   self.btn_wizard, self.btn_word, self.btn_excel, 
+                   self.btn_ppt, self.btn_pdf]:
             try: btn.config(state='normal')
             except: pass
         self.btn_stop.config(state='disabled')
@@ -728,7 +778,7 @@ class ToolkitGUI:
         var_show = tk.BooleanVar(value=True if force else self.config.get("show_instructions", True))
         
         def on_close():
-            self._save_config(self.api_key, var_show.get())
+            self._save_config("", var_show.get())
             dialog.destroy()
             
         chk = tk.Checkbutton(dialog, text="Show this message on startup", variable=var_show)
