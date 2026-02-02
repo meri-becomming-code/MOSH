@@ -15,8 +15,6 @@ def generate_alt_text(image_path, api_key):
 
     try:
         genai.configure(api_key=api_key)
-        
-        # Use Gemini Pro Vision (or gemini-1.5-flash which is faster/cheaper)
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         img = Image.open(image_path)
@@ -34,3 +32,18 @@ def generate_alt_text(image_path, api_key):
         
     except Exception as e:
         return None, str(e)
+
+def batch_generate_alt_text(image_paths, api_key, progress_callback=None):
+    """
+    Generates alt text for multiple images.
+    progress_callback: function(current, total, filename, result)
+    """
+    results = {}
+    total = len(image_paths)
+    for i, path in enumerate(image_paths):
+        fname = os.path.basename(path)
+        text, err = generate_alt_text(path, api_key)
+        results[fname] = text if not err else f"[Error: {err}]"
+        if progress_callback:
+            progress_callback(i + 1, total, fname, results[fname])
+    return results
