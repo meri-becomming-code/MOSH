@@ -28,14 +28,17 @@ class FixerIO:
             try:
                 with open(self.alt_memory_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except: return {}
+            except Exception as e:
+                print(f"[Warning] Could not load memory file: {e}")
+                return {}
         return {}
 
     def save_memory(self):
         try:
             with open(self.alt_memory_file, 'w', encoding='utf-8') as f:
                 json.dump(self.memory, f, indent=4)
-        except: pass
+        except Exception as e:
+            print(f"[Warning] Could not save memory file: {e}")
 
     def log(self, message):
         print(message)
@@ -287,7 +290,8 @@ def resolve_image_path(src, filepath, root_dir, io_handler):
             tmp.write(content)
             tmp.close()
             return tmp.name
-        except: pass
+        except Exception as e:
+            print(f"[Warning] Could not decode base64 image: {e}")
 
     # 4. Nuclear Option: Fuzzy / Recursive Search
     target_name = os.path.basename(clean_src)
