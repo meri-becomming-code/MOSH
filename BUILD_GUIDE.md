@@ -83,3 +83,4 @@ If you need to customize the build or debug errors, run this manually:
 
 **"Failed to execute script..."**
 *   This is a generic PyInstaller error. Try deleting the `build` and `dist` folders and building again with `--clean`.
+*   Ensure `Pillow` is installed: `pip install Pillow`

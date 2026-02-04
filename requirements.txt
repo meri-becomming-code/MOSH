@@ -6,3 +6,4 @@ mammoth
 openpyxl
 python-pptx
 pdfminer.six
+Pillow
