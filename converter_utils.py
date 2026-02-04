@@ -147,9 +147,10 @@ def convert_docx_to_html(docx_path):
             with open(img_path, 'wb') as f:
                 f.write(image_bytes)
             
-            # 4. Return Tag with Canvas Token (Nested Path)
+            # 4. Return Tag with Standard Relative Path
+            # This ensures images work locally AND in Canvas (standard import)
             return {
-                "src": f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{img_name}",
+                "src": f"web_resources/{safe_filename}/{img_name}",
                 "alt": alt_text
             }
 
@@ -286,8 +287,8 @@ def convert_ppt_to_html(ppt_path):
                         with open(image_full_path, 'wb') as img_f:
                             img_f.write(image_bytes)
                             
-                        # Embed in HTML with Canvas Token
-                        rel_path = f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{image_filename}"
+                        # Embed in HTML with Standard Relative Path
+                        rel_path = f"web_resources/{safe_filename}/{image_filename}"
                         html_parts.append(f'<img src="{rel_path}" alt="[FIX_ME] Image from Slide {slide_num}" class="slide-image">')
                     except Exception as img_err:
                         print(f"Skipped image on slide {slide_num}: {img_err}")
@@ -352,7 +353,7 @@ def convert_pdf_to_html(pdf_path):
                     with open(image_full_path, "wb") as f:
                         f.write(image_bytes)
                         
-                    rel_path = f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{image_filename}"
+                    rel_path = f"web_resources/{safe_filename}/{image_filename}"
                     html_parts.append(f'<img src="{rel_path}" alt="[FIX_ME] Image from Page {page_num}" class="content-image" style="max-width: 100%; height: auto; display: block; margin: 10px 0;">')
                 except:
                     pass

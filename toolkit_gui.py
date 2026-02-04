@@ -745,10 +745,14 @@ and to all the other students struggling with their own challenges.
         Welcome to MOSH's Toolkit
         (Making Online Spaces Helpful)
 
-        MOSH's Toolkit is designed to help educators create accessible online spaces. This tool was built to bridge the gap between complex accessibility requirements and everyday teaching.
+        🚀 QUICK START:
+        1. Select Project: Click "Browse Folder" to choose your content folder.
+        2. Auto-Fix: Run "Auto-Fix Issues" to handle headings and tables.
+        3. Guided Review: Use "Guided Review" to check Alt Text and Links.
+        4. Repackage: Use "Repackage Course" to create a standard Canvas export.
 
-        Dedication:
-        This software is dedicated to my son, Michael Joshua (Mosh) Albright, who deals with diabetic retinopathy and spent three years blind, and to all the other students struggling with their own challenges.
+        💡 TIP:
+        The "Dedication" and detailed "About" info can be found in the Help menu.
         """
         
         lbl = tk.Label(dialog, text=intro, justify="left", font=("Segoe UI", 11), 
