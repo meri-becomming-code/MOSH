@@ -37,8 +37,7 @@ def remediate_html_file(filepath):
     # Strip Justified Text (Panorama / Dyslexia Fix)
     html_content = re.sub(r'text-align:\s*justify;?', 'text-align: left;', html_content, flags=re.IGNORECASE)
 
-    # Cleanup "max-max-width" regression from previous runs
-    html_content = html_content.replace('max-max-width', 'max-width')
+    # Note: The regex now uses (?<!-) lookbehind to avoid matching max-width/min-width
 
     # REGEX REMOVED: Do not globally force width: 100%. Handled cleanly in BeautifulSoup.
     

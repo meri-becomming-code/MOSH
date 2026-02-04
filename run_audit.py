@@ -15,12 +15,12 @@ def hex_to_rgb(hex_color):
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 def get_luminance(rgb):
-    rag = []
+    rgb_linear = []
     for c in rgb:
         c = c / 255.0
-        if c <= 0.03928: rag.append(c / 12.92)
-        else: rag.append(((c + 0.055) / 1.055) ** 2.4)
-    return 0.2126 * rag[0] + 0.7152 * rag[1] + 0.0722 * rag[2]
+        if c <= 0.03928: rgb_linear.append(c / 12.92)
+        else: rgb_linear.append(((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * rgb_linear[0] + 0.7152 * rgb_linear[1] + 0.0722 * rgb_linear[2]
 
 def get_contrast_ratio(hex1, hex2):
     rgb1 = hex_to_rgb(hex1)
@@ -66,11 +66,6 @@ def check_headings(soup):
             issues.append(f"Skipped level: H{last_level} -> H{curr_level}")
         last_level = curr_level
     return issues
-
-    # Simplify result if empty
-    if not results["technical"] and not results["subjective"]:
-        return None
-    return results
 
 def check_viewport(soup):
     """Reflow Check: Ensures <meta name='viewport'> exists."""
