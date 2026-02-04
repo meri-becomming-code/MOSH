@@ -93,10 +93,23 @@ def remediate_html_file(filepath):
             main_div['lang'] = 'en'
             fixes.append("Applied default language 'en' to main container")
 
-    # --- Part 3: Content Styling Cleanup (REMOVED) ---
-    # We are NO LONGER stripping styles globally. 
-    # The goal is to preserve user design while only fixing specific accessibility issues.
-    # Logic moved to targeted checks if needed.
+    # --- Part 3: Reflow & Layout Fixes (Added per User Request) ---
+    # Fix 1: Fixed Width Containers > 320px
+    # Regex to find "width: 123px" (case insensitive)
+    def width_replacer(match):
+        val = int(match.group(1))
+        if val > 320:
+            return f"width: 100%; max-width: {val}px"
+        return match.group(0) # Keep small fixed widths (buttons, icons)
+
+    html_content = re.sub(r'width:\s*(\d+)px', width_replacer, html_content, flags=re.IGNORECASE)
+
+    # Fix 2: Justified Text (Accessibility/Dyslexia)
+    if "text-align: justify" in html_content.lower() or "text-align:justify" in html_content.lower():
+         html_content = re.sub(r'text-align:\s*justify;?', 'text-align: left;', html_content, flags=re.IGNORECASE)
+         fixes.append("Replaced 'justify' text alignment with 'left'")
+
+    fixes.append("Converted fixed widths >320px to responsive max-width")
 
     # --- Part 4: "Deep Obsidian" Code & Standardized Math ---
     
