@@ -764,6 +764,14 @@ and to all the other students struggling with their own challenges.
         3. Auto-Fix & Review: Run "Auto-Fix" and then "Guided Review" to remediate content.
         4. Repackage: Click "Repackage Course" to create a new file for upload.
 
+        📦 BACKUP & SAFETY:
+        - **Keep Your Files**: Always keep both your original .imscc file and your 
+          extracted project folder on your computer. These are your local backups.
+        - **Compliance**: Original files (PPTX, PDF, etc.) are moved to a safety 
+          archive folder after conversion. This keeps them safe on YOUR computer 
+          but prevents them from being uploaded to Canvas where they could 
+          cause accessibility violations.
+
         ⚠️ ALPHA TEST WARNING:
         This is ALPHA software. Use a NEW EMPTY CANVAS COURSE to test your files.
         Do NOT import directly into a live course until you have verified everything.
@@ -966,6 +974,16 @@ YOUR WORKFLOW:
                 if self.gui_handler.confirm(msg_link):
                     count = converter_utils.update_links_in_directory(self.target_dir, fpath, output_path)
                     self.gui_handler.log(f"   Updated links in {count} files.")
+
+                # 5. Prompt Archiving (NEW)
+                msg_archive = (f"To maintain Canvas compliance, original files ({ext.upper()}) should not be uploaded to your course.\n\n"
+                               f"Would you like to move '{fname}' to the archive folder?\n"
+                               f"(It will be safe in '_ORIGINALS_DO_NOT_UPLOAD_', but won't be exported to Canvas.)")
+                
+                if self.gui_handler.confirm(msg_archive):
+                    new_archive_path = converter_utils.archive_source_file(fpath)
+                    if new_archive_path:
+                        self.gui_handler.log(f"   Original moved to archive: {converter_utils.ARCHIVE_FOLDER_NAME}")
                 
                 self.gui_handler.log("   Done.")
             
@@ -1043,6 +1061,14 @@ YOUR WORKFLOW:
             if self.gui_handler.confirm(f"Do you want to update links in ALL HTML files?\nFrom: {os.path.basename(file_path)}\nTo: {os.path.basename(output_path)}"):
                 count = converter_utils.update_links_in_directory(self.target_dir, file_path, output_path)
                 self.gui_handler.log(f"Updated links in {count} files.")
+            
+            # Archive Original (NEW)
+            msg_archive = (f"To maintain Canvas compliance, original files should not be uploaded to your course.\n\n"
+                           f"Move '{os.path.basename(file_path)}' to the safety archive folder?\n"
+                           f"(It will be safe on your computer but hidden from Canvas.)")
+            if self.gui_handler.confirm(msg_archive):
+                converter_utils.archive_source_file(file_path)
+                self.gui_handler.log(f"Original moved to {converter_utils.ARCHIVE_FOLDER_NAME}")
             
             
         self._run_task_in_thread(task, f"Convert {ext.upper()}")
