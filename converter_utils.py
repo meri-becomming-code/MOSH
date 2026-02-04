@@ -10,6 +10,9 @@ import zipfile
 import base64
 import uuid
 
+# --- Constants ---
+ARCHIVE_FOLDER_NAME = "_ORIGINALS_DO_NOT_UPLOAD_"
+
 # --- Third Party Imports ---
 try:
     import mammoth
@@ -626,10 +629,15 @@ def unzip_course_package(zip_path, extract_to):
 def create_course_package(source_dir, output_path):
     """
     Zips the directory back into a .imscc file.
+    Automatically excludes the originals archive folder.
     """
     try:
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(source_dir):
+                # Skip the archive folder entirely
+                if ARCHIVE_FOLDER_NAME in root:
+                    continue
+                    
                 for file in files:
                     file_path = os.path.join(root, file)
                     # Archive name should be relative to source_dir
@@ -638,3 +646,32 @@ def create_course_package(source_dir, output_path):
         return True, f"Created: {output_path}"
     except Exception as e:
         return False, str(e)
+
+def archive_source_file(file_path):
+    """
+    Moves an original source file to the archive folder.
+    Returns the new path.
+    """
+    try:
+        if not os.path.exists(file_path):
+            return None
+            
+        dir_name = os.path.dirname(file_path)
+        archive_dir = os.path.join(dir_name, ARCHIVE_FOLDER_NAME)
+        
+        if not os.path.exists(archive_dir):
+            os.makedirs(archive_dir)
+            
+        new_path = os.path.join(archive_dir, os.path.basename(file_path))
+        
+        # If file already exists in archive, add a timestamp or just overwrite
+        if os.path.exists(new_path):
+            # For simplicity, we just move it. Shutil.move handles destination objects.
+            pass
+            
+        shutil.move(file_path, new_path)
+        return new_path
+    except Exception as e:
+        print(f"Error archiving {file_path}: {e}")
+        return None
+
