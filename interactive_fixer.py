@@ -447,9 +447,11 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
         elif "[fix_me]" in text.lower():
             issue = "Marked as [FIX_ME]"
         
-        # Check for Raw URL as Text
+        # Check for Raw URL as Text or Filenames
         elif text.lower() == href.lower() or (text.lower().startswith('http') and len(text) > 20):
              issue = "Raw URL used as link text"
+        elif any(text.strip().lower().endswith(ext) for ext in ['.html', '.pdf', '.docx', '.pptx', '.zip']):
+             issue = "Filename used as link text"
 
         if issue:
             io_handler.log(f"\n  [ISSUE #{i+1}] Link: {href}")
