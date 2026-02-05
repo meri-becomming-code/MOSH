@@ -400,34 +400,40 @@ and to all the other students struggling with their own challenges.
         if not path: return
         
         # Determine extraction folder
-        # Logic: Create a folder with same name as file in the same directory
         directory = os.path.dirname(path)
         filename = os.path.basename(path)
         folder_name = os.path.splitext(filename)[0] + "_extracted"
         extract_to = os.path.join(directory, folder_name)
         
-        # Confirm
+        # Confirm (Must be on main thread)
         if not messagebox.askyesno("Confirm Import", f"Extract package to:\n{extract_to}?"):
             return
+
+        def task():
+            self.gui_handler.log(f"--- Extracting Package: {filename} ---")
+            success, msg = converter_utils.unzip_course_package(path, extract_to)
             
-        self._log(f"--- Extracting Package: {filename} ---")
-        self.root.update()
-        
-        success, msg = converter_utils.unzip_course_package(path, extract_to)
-        
-        if success:
-            self._log(f"Success! {msg}")
-            # Update Target Dir automatically
-            self.target_dir = extract_to
-            self.lbl_dir.delete(0, tk.END)
-            self.lbl_dir.insert(0, extract_to)
-            messagebox.showinfo("Import Complete", f"Package extracted successfully!\n\nTarget Project updated to:\n{extract_to}")
-        else:
-            self._log(f"[ERROR] Import Failed: {msg}")
-            messagebox.showerror("Import Error", f"Failed to extract package:\n{msg}")
+            if success:
+                self.gui_handler.log(f"Success! {msg}")
+                # Update UI elements via after()
+                self.root.after(0, lambda: self._finalize_import(extract_to))
+            else:
+                self.gui_handler.log(f"[ERROR] Import Failed: {msg}")
+                self.root.after(0, lambda: messagebox.showerror("Import Error", f"Failed to extract package:\n{msg}"))
+
+        self._run_task_in_thread(task, "Package Import")
+
+    def _finalize_import(self, extract_to):
+        """Updates UI after successful import (runs on main thread)."""
+        self.target_dir = extract_to
+        self.lbl_dir.delete(0, tk.END)
+        self.lbl_dir.insert(0, extract_to)
+        messagebox.showinfo("Import Complete", f"Package extracted successfully!\n\nTarget Project updated to:\n{extract_to}")
 
     def _export_package(self):
         """Zips the current target directory back into a .imscc file."""
+        # Check target dir first
+        self.target_dir = self.lbl_dir.get().strip()
         if not os.path.isdir(self.target_dir):
             messagebox.showerror("Error", "Please select a valid project folder first.")
             return
@@ -442,23 +448,24 @@ and to all the other students struggling with their own challenges.
         )
         
         if not output_path: return
-        
-        self._log(f"--- Packaging Course... ---")
-        self.root.update()
-        
-        success, msg = converter_utils.create_course_package(self.target_dir, output_path)
-        
-        if success:
-             self._log(f"Success! Saved to {os.path.basename(output_path)}")
-             messagebox.showinfo("Export Complete", 
-                f"Course Package Created:\n{output_path}\n\nIMPORTANT NEXT STEPS:\n"
-                "1. Create a NEW, EMPTY course in Canvas to use as a test space.\n"
-                "2. Import this file into that empty course.\n"
-                "3. Review all changes BEFORE moving content to a live semester."
-             )
-        else:
-             self._log(f"[ERROR] Packaging Failed: {msg}")
-             messagebox.showerror("Export Error", f"Failed to create package:\n{msg}")
+
+        def task():
+            self.gui_handler.log(f"--- Packaging Course... ---")
+            success, msg = converter_utils.create_course_package(self.target_dir, output_path, log_func=self.gui_handler.log)
+            
+            if success:
+                 self.gui_handler.log(f"Success! {msg}")
+                 self.root.after(0, lambda: messagebox.showinfo("Export Complete", 
+                    f"Course Package Created:\n{output_path}\n\nIMPORTANT NEXT STEPS:\n"
+                    "1. Create a NEW, EMPTY course in Canvas to use as a test space.\n"
+                    "2. Import this file into that empty course.\n"
+                    "3. Review all changes BEFORE moving content to a live semester."
+                 ))
+            else:
+                 self.gui_handler.log(f"[ERROR] Packaging Failed: {msg}")
+                 self.root.after(0, lambda: messagebox.showerror("Export Error", f"Failed to create package:\n{msg}"))
+
+        self._run_task_in_thread(task, "Course Packaging")
 
     def _log(self, msg):
         self.txt_log.configure(state='normal')
@@ -1062,28 +1069,41 @@ YOUR WORKFLOW:
 
             self.gui_handler.log(f"[SUCCESS] Created: {os.path.basename(output_path)}")
             
-            # Post-Conversion Prompts
+            # 2. Preview (Open both)
+            try:
+                os.startfile(file_path) # Open Original
+                os.startfile(output_path) # Open New HTML
+            except Exception as e:
+                self.gui_handler.log(f"   [WARNING] Could not auto-open files: {e}")
+            
+            # 3. Prompt user (Keep/Discard?)
+            msg = (f"Reviewing: {os.path.basename(file_path)}\n\n"
+                   f"I have opened both the original and the new HTML file.\n"
+                   f"Do you want to KEEP this new HTML version?")
+            
+            if not self.gui_handler.confirm(msg):
+                try:
+                    os.remove(output_path)
+                    self.gui_handler.log("   Discarded.")
+                except:
+                    pass
+                return
+
+            # 4. Success / Info
             if ext == "pptx":
                 self.gui_handler.log("[INFO] Images extracted with [FIX_ME] tags.")
-                self.gui_handler.log("Please run '2. Interactive Fixer' to describe them.")
-                # We need to schedule the messagebox on the main thread
-                # Or just rely on the log? The user asked for "tell the users". 
-                # messagebox from thread is risky in some TK versions but usually works if root is main.
-                # Safer:
-                self.gui_handler.log("!!! IMPORTANT: Run Option 2 now to fix image descriptions !!!")
+                self.gui_handler.log("!!! IMPORTANT: Run '2. Interactive Fixer' now to fix image descriptions !!!")
 
-            # Link Updater Logic inside thread? 
-            # messagebox.askyesno blocks. 
-            # We need to bridge this to UI thread.
+            # 5. Link Updater
+            msg_link = (f"Excellent. The original file is untouched.\n\n"
+                        f"Would you like to SCAN ALL OTHER FILES in this folder\n"
+                        f"and update any links to point to this new HTML file instead?")
             
-            self.gui_handler.confirm(f"Update links to {os.path.basename(output_path)}?")
-            # Actually confirm returns boolean from UI thread!
-            
-            if self.gui_handler.confirm(f"Do you want to update links in ALL HTML files?\nFrom: {os.path.basename(file_path)}\nTo: {os.path.basename(output_path)}"):
+            if self.gui_handler.confirm(msg_link):
                 count = converter_utils.update_links_in_directory(self.target_dir, file_path, output_path)
-                self.gui_handler.log(f"Updated links in {count} files.")
+                self.gui_handler.log(f"   Updated links in {count} files.")
             
-            # Archive Original (NEW)
+            # 6. Archive Original (NEW)
             msg_archive = (f"To maintain Canvas compliance, original files should not be uploaded to your course.\n\n"
                            f"Move '{os.path.basename(file_path)}' to the safety archive folder?\n"
                            f"(It will be safe on your computer but hidden from Canvas.)")
