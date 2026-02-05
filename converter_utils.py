@@ -15,11 +15,12 @@ ARCHIVE_FOLDER_NAME = "_ORIGINALS_DO_NOT_UPLOAD_"
 
 def sanitize_filename(base_name):
     """
-    Replaces spaces and special characters with underscores to ensure web safety.
+    Replaces spaces, dots, and special characters with underscores to ensure web safety.
     Input should be the filename WITHOUT extension.
     """
-    # [FIX] Don't split extension here, just sanitize the whole string
-    s_name = re.sub(r'[^a-zA-Z0-9\.\-]', '_', base_name)
+    # [STRICT FIX] Only allow letters, numbers, underscores, and hyphens. 
+    # Everything else (including dots and commas) becomes an underscore.
+    s_name = re.sub(r'[^\w\-]', '_', base_name)
     # Collapse multiple underscores
     s_name = re.sub(r'_+', '_', s_name)
     # Clean up trailing/leading underscores
