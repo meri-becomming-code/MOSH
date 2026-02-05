@@ -1,15 +1,33 @@
-# MOSH Faculty ADA Toolkit
-
+# MOSH ADA Toolkit
 **"Making Online Spaces Helpful"**
 
-## Dedication
-This software is dedicated to my son, Michael Joshua (Mosh) Albright, who deals with diabetic retinopathy and spent three years blind, and to all the other students struggling with their own challenges. Accessibility isn't just a requirement; it's a lifeline.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Website](https://img.shields.io/badge/Website-Live-green.svg)](https://meri-becomming-code.github.io/mosh/)
 
-## About
-MOSH is a streamlined tool designed for faculty to audit and remediate accessibility issues in Canvas HTML content. It provides:
-- **Auto-Fixing**: Structural fixes for headings, tables, and contrast.
-- **Guided Review**: A human-in-the-loop interface for writing meaningful Alt Text and verifying links.
-- **Conversion**: Smart conversion for Word, PPT, and PDF files into accessible HTML.
+MOSH is a powerful, educator-focused suite designed to automate the heavy lifting of accessibility remediation for Canvas and Web content.
 
-## License
-Released under the GNU General Public License version 3.
+## 🎁 A Gift from One Educator to Another
+MOSH wasn't born from a business plan or a commercial ambition. It began as a simple attempt to solve a personal struggle in my own classroom. I never intended to create this toolkit; I was simply looking for a way forward. 
+
+One step at a time, and one insight at a time, the path was revealed to me. I believe that my ability to build this was a gift from God, and I give Him all the glory for every insight granted during this journey. As a Christian, I believe that because I have been blessed with the ability to help, I have a sacred responsibility to share that help freely. I'm not here to hold a tool hostage for money; I'm here to serve.
+
+We believe that accessibility is a foundational human right, not a profit center. Accessibility remediation shouldn't be a source of resentment or unpaid labor—it should be a seamless part of the teaching craft. This toolkit is a gift, freely given, to help you reclaim your time, protect your course quality, and focus on what truly matters: your students.
+
+## ✨ Key Features
+- **🎲 Roll the Dice (Batch Conversion)**: Instantly convert entire directories of Word, PPT, Excel, and PDF files into clean, accessible HTML.
+- **🛡️ Auto-Fixer**: Automatically corrects structural issues like missing header hierarchies, improper table formatting, and broken tags.
+- **Guided Review**: A human-centric interface to help you write meaningful Alt Text and verify links without looking at code.
+- **🏆 Morale Tracker**: Quantifies exactly how much manual labor has been saved, reinforcing the value of your efforts.
+
+## 💛 Dedication
+This software is dedicated to my son, **Michael Joshua (MOSH) Albright**, who battles Diabetic Retinopathy. Having spent years in blindness and reclaiming his sight, his journey reminds us that accessibility isn't just a requirement; it's a lifeline.
+
+*— Dr. Meri Kasprak*
+
+## 🚀 Getting Started
+1. **Visit our [Download Page](https://meri-becomming-code.github.io/mosh/)**
+2. Download the `MOSH_ADA_Toolkit.exe` from the latest release.
+3. **Note for Windows Users**: As an educator-funded project, we are currently in the process of applying for an official code-signing certificate. If Windows warns you that the app is "Unknown," you may need to click "More Info" -> "Run Anyway" during this first phase.
+
+## ⚖️ License
+Released freely under the GNU General Public License v3.0. Share it. Improve it. Use it to help others.

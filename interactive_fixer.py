@@ -15,6 +15,20 @@ import tempfile
 BAD_ALT_TEXT = ['image', 'photo', 'picture', 'spacer', 'undefined', 'null']
 BAD_LINK_TEXT = ['click here', 'here', 'read more', 'link', 'more info', 'info']
 
+def sanitize_filename(base_name):
+    """
+    Replaces spaces, dots, and special characters with underscores to ensure web safety.
+    Input should be the filename WITHOUT extension.
+    """
+    # [STRICT FIX] Only allow letters, numbers, underscores, and hyphens. 
+    # Everything else (including dots and commas) becomes an underscore.
+    s_name = re.sub(r'[^\w\-]', '_', base_name)
+    # Collapse multiple underscores
+    s_name = re.sub(r'_+', '_', s_name)
+    # Clean up trailing/leading underscores
+    s_name = s_name.strip('_')
+    return s_name
+
 class FixerIO:
     """Handles Input/Output. Subclass this for GUI integration."""
     def __init__(self):
@@ -607,16 +621,15 @@ def audit_filename(filepath, io_handler, root_dir):
     dir_name = os.path.dirname(filepath)
     old_name = os.path.basename(filepath)
     
-    # Check for spaces or special chars
-    if " " in old_name or any(c in old_name for c in "()[]{}!@#$%^&+"):
+    # Check for spaces or special chars using strict logic
+    name_only, ext = os.path.splitext(old_name)
+    suggested_base = sanitize_filename(name_only)
+    suggested = suggested_base + ext.lower()
+    
+    if old_name != suggested:
         io_handler.log(f"\n  [FILENAME ISSUE] \"{old_name}\" contains spaces or special characters.")
         io_handler.log("    (Bad filenames can break links and cause issues in Canvas/Web)")
         
-        suggested = old_name.replace(" ", "_")
-        # Clean other chars
-        for c in "()[]{}!@#$%^&+":
-            suggested = suggested.replace(c, "")
-            
         msg = f"    > Rename to \"{suggested}\"? (And update all project links): "
         if io_handler.confirm(msg):
             new_full_path = os.path.join(dir_name, suggested)
