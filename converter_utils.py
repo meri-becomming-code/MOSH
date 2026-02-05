@@ -637,24 +637,52 @@ def unzip_course_package(zip_path, extract_to):
     except Exception as e:
         return False, str(e)
 
-def create_course_package(source_dir, output_path):
+def create_course_package(source_dir, output_path, log_func=None):
     """
     Zips the directory back into a .imscc file.
-    Automatically excludes the originals archive folder.
+    Automatically excludes:
+    - The originals archive folder
+    - The output file itself (handles Windows case-insensitivity)
+    - System/Dev folders like .git, venv, __pycache__
     """
     try:
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # Get absolute path of output to prevent zipping it into itself
+        abs_output = os.path.normpath(os.path.abspath(output_path)).lower()
+        
+        # Folders to skip
+        SKIP_DIRS = [ARCHIVE_FOLDER_NAME, '.git', 'venv', '.venv', '__pycache__', '.pytest_cache']
+        
+        file_count = 0
+        total_files_added = 0
+        
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as zipf:
             for root, dirs, files in os.walk(source_dir):
-                # Skip the archive folder entirely
-                if ARCHIVE_FOLDER_NAME in root:
-                    continue
-                    
+                # Filter out skip directories
+                # Modifying dirs in-place affects os.walk behavior
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                
                 for file in files:
                     file_path = os.path.join(root, file)
+                    abs_file = os.path.normpath(os.path.abspath(file_path)).lower()
+                    
+                    # [CRITICAL FIX] Skip the output .imscc file (Case-Insensitive for Windows)
+                    if abs_file == abs_output:
+                        continue
+
                     # Archive name should be relative to source_dir
                     arcname = os.path.relpath(file_path, source_dir)
                     zipf.write(file_path, arcname)
-        return True, f"Created: {output_path}"
+                    
+                    file_count += 1
+                    total_files_added += 1
+                    
+                    # Log progress every 50 files
+                    if log_func and file_count >= 50:
+                        log_func(f"   ... Added {total_files_added} files...")
+                        file_count = 0
+                        
+        size_mb = os.path.getsize(output_path) / (1024 * 1024)
+        return True, f"Created: {output_path} ({total_files_added} files, {size_mb:.2f} MB)"
     except Exception as e:
         return False, str(e)
 
