@@ -10,6 +10,7 @@ import urllib.parse
 import re
 import base64
 import tempfile
+import hashlib
 
 # --- Configuration ---
 BAD_ALT_TEXT = ['image', 'photo', 'picture', 'spacer', 'undefined', 'null']
@@ -87,11 +88,26 @@ class FixerIO:
     def confirm(self, message):
         return self.prompt(f"{message} (y/n): ").lower().strip() == 'y'
 
-def normalize_image_key(src):
-    """Normalizes an image src to a consistent memory key (URL-decoded basename, lowercase)."""
+def normalize_image_key(src, full_path=None):
+    """
+    Normalizes an image src to a consistent memory key.
+    If full_path is provided and exists, we include file size for uniqueness 
+    (to handle generic names like 'image1.png' from different PPTs).
+    """
     basename = os.path.basename(src)
     decoded = urllib.parse.unquote(basename)
-    return decoded.lower()
+    key = decoded.lower()
+    
+    if full_path and os.path.exists(full_path):
+        try:
+            size = os.path.getsize(full_path)
+            # We use filename + size as a lightweight 'unique enough' key
+            # This prevents 'image1.png' from one PPT being confused with 'image1.png' from another.
+            return f"{key}|sz:{size}"
+        except:
+            pass
+            
+    return key
 
 def get_suggested_title(tag):
     """Attempts to guess a title based on surrounding text."""
@@ -413,16 +429,6 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             io_handler.log(f"    Reason: {issue}")
             io_handler.log(f"    Current Alt: '{alt}'")
             
-            # [NEW] Check Memory Bank First (normalize key for consistent matching)
-            mem_key = normalize_image_key(src)
-            if mem_key in io_handler.memory:
-                suggested_alt = io_handler.memory[mem_key]
-                io_handler.log(f"    [Memory Bank] Found saved alt text: '{suggested_alt}'")
-                img['alt'] = suggested_alt
-                modified = True
-                io_handler.log("    -> Auto-applied from memory.")
-                continue
-
             # Resolve image path using helper
             if root_dir: 
                 io_handler.log(f"    [Trace] Resolution Root: {root_dir}")
@@ -430,6 +436,17 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             img_full_path = resolve_image_path(src, filepath, root_dir, io_handler)
             context = get_context(img)
             
+            # [NEW] Check Memory Bank AGAIN with more unique key if path was resolved
+            if img_full_path:
+                mem_key = normalize_image_key(src, img_full_path)
+                if mem_key in io_handler.memory:
+                    suggested_alt = io_handler.memory[mem_key]
+                    io_handler.log(f"    [Memory Bank] Found saved alt text for this specific image: '{suggested_alt}'")
+                    img['alt'] = suggested_alt
+                    modified = True
+                    io_handler.log("    -> Auto-applied from memory.")
+                    continue
+
             if not img_full_path:
                  io_handler.log(f"    [Warning] Could not find local image file.")
 

@@ -448,7 +448,7 @@ and to all the other students struggling with their own challenges.
         # Row 1: Import Button
         btn_import = ttk.Button(
             frame_dir, 
-            text="📦 Import Course Package (.imscc / .zip)", 
+            text="📦 Import My Course (Canvas Export File)", 
             command=self._import_package,
             style="Action.TButton"
         )
@@ -457,15 +457,11 @@ and to all the other students struggling with their own challenges.
         # Row 1b: Connect to Canvas (Barney Mode)
         btn_canvas = ttk.Button(
             frame_dir, 
-            text="🔗 Connect to My Canvas Playground (Safe Setup)", 
+            text="🔗 Connect to My Canvas Playground", 
             command=self._show_canvas_settings,
             style="Action.TButton"
         )
         btn_canvas.pack(side="top", fill="x", pady=(0, 5))
-        
-        # Row 2: Folder Browser
-        frame_browse = ttk.Frame(frame_dir)
-        frame_browse.pack(fill="x")
         
         # Row 2: Folder Browser
         frame_browse = ttk.Frame(frame_dir)
@@ -488,14 +484,14 @@ and to all the other students struggling with their own challenges.
         frame_actions.pack(fill="x", pady=(10, 20))
         
         # Friendly Button Names
-        self.btn_auto = ttk.Button(frame_actions, text="Auto-Fix Issues\n(Headings, Tables)", command=self._run_auto_fixer, style="Action.TButton")
+        self.btn_auto = ttk.Button(frame_actions, text="Auto-Fix Issues\n(Headings, Tables, Contrast)", command=self._run_auto_fixer, style="Action.TButton")
         self.btn_auto.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         
-        self.btn_inter = ttk.Button(frame_actions, text="Guided Review\n(Alt Tags, Links, File Names)", command=self._run_interactive, style="Action.TButton")
+        self.btn_inter = ttk.Button(frame_actions, text="Guided Review\n(Image Descriptions & Links)", command=self._run_interactive, style="Action.TButton")
         self.btn_inter.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
         # Row 2 (Audit)
-        self.btn_audit = ttk.Button(frame_actions, text="Quick Report\n(Audit JSON)", command=self._run_audit, style="Action.TButton")
+        self.btn_audit = ttk.Button(frame_actions, text="Quick Report\n(Is it Compliant?)", command=self._run_audit, style="Action.TButton")
         self.btn_audit.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
         frame_actions.columnconfigure(0, weight=1)
@@ -509,7 +505,7 @@ and to all the other students struggling with their own challenges.
         frame_convert = ttk.Frame(content)
         frame_convert.pack(fill="x", pady=(10, 20))
         
-        self.btn_wizard = ttk.Button(frame_convert, text="🪄 Conversion Wizard (Word/PPT -> Canvas WikiPages)", command=self._show_conversion_wizard, style="Action.TButton")
+        self.btn_wizard = ttk.Button(frame_convert, text="🪄 Conversion Wizard (Word/PPT -> Canvas Pages)", command=self._show_conversion_wizard, style="Action.TButton")
         self.btn_wizard.pack(fill="x", pady=5)
         
         frame_singles = ttk.Frame(frame_convert)
@@ -524,7 +520,7 @@ and to all the other students struggling with their own challenges.
         self.btn_pdf = ttk.Button(frame_singles, text="PDF", command=lambda: self._show_conversion_wizard("pdf"))
         self.btn_pdf.pack(side="left", fill="x", expand=True, padx=2)
 
-        self.btn_batch = ttk.Button(frame_convert, text="🎲 Roll the Dice: Convert Everything (Risky) 🎲", 
+        self.btn_batch = ttk.Button(frame_convert, text="🪄 Convert All Original Files (Batch Mode)", 
                                     command=self._run_batch_conversion, style="Action.TButton")
         self.btn_batch.pack(fill="x", pady=(10, 5))
 
@@ -543,7 +539,7 @@ and to all the other students struggling with their own challenges.
 
         self.btn_push = ttk.Button(
             frame_final, 
-            text="🚀 Push Whole Course to Canvas", 
+            text="🚀 Send My Clean Course to Canvas", 
             command=self._push_to_canvas,
             style="Action.TButton"
         )
@@ -600,7 +596,11 @@ and to all the other students struggling with their own challenges.
         self.target_dir = extract_to
         self.lbl_dir.delete(0, tk.END)
         self.lbl_dir.insert(0, extract_to)
-        messagebox.showinfo("Import Complete", f"Package extracted successfully!\n\nTarget Project updated to:\n{extract_to}")
+        
+        msg = (f"Package extracted successfully!\n\n"
+               f"Mosh has prepared your project here:\n{extract_to}\n\n"
+               f"Now, use Step 2 to fix descriptions or Step 3 to add more files.")
+        messagebox.showinfo("Import Complete", msg)
 
     def _export_package(self):
         """Zips the current target directory back into a .imscc file."""
@@ -714,6 +714,8 @@ and to all the other students struggling with their own challenges.
         except Exception as e:
             tk.Label(dialog, text=f"[Could not load image: {e}]", fg="red").pack(pady=10)
         
+        fname = os.path.basename(image_path)
+        tk.Label(dialog, text=f"File: {fname}", font=("Segoe UI", 9, "bold")).pack()
         tk.Label(dialog, text=message, wraplength=550, font=("Segoe UI", 10)).pack(pady=5)
         
         # Input Area
@@ -1626,8 +1628,17 @@ YOUR WORKFLOW:
         score_frame = ttk.Frame(dialog, padding=10)
         score_frame.pack(fill="x")
         
-        msg = "🚀 YOU ARE CLEAR FOR TAKEOFF!" if ready_count == len(checks) else "🛠️ Almost there! Finish the items above."
-        ttk.Label(score_frame, text=msg, font=("Segoe UI", 12, "bold"), foreground="#4b3190" if ready_count == len(checks) else "#d4a017").pack()
+        if ready_count == len(checks):
+            msg = "🚀 YOU ARE CLEAR FOR TAKEOFF!"
+            color = "#2E7D32" # Forest Green
+            advice = "Mosh: 'Great job! You've put in the work, now let's show Canvas how it's done.'"
+        else:
+            msg = "🛠️ Almost there! Finish the items above."
+            color = "#d4a017"
+            advice = "Mosh: 'Remediation is tough, but you're doing great. Just a few more things to fix!'"
+
+        tk.Label(score_frame, text=msg, font=("Segoe UI", 12, "bold"), foreground=color).pack()
+        tk.Label(score_frame, text=advice, font=("Segoe UI", 10, "italic"), foreground=colors["fg"]).pack(pady=5)
 
         if ready_count == len(checks):
              self.btn_push.config(state='normal')
