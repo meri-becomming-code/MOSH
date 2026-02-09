@@ -129,6 +129,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }}
         .slide-container::after {{ content: ""; display: table; clear: both; }}
         .slide-image {{ border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        
+        /* Accounting & Excel Styles */
+        .accounting-table {{ border-collapse: collapse; margin: 25px 0; font-family: 'Courier New', Courier, monospace; width: auto; min-width: 50%; }}
+        .accounting-table th, .accounting-table td {{ border: 1px solid #ccc; padding: 8px 12px; }}
+        .currency-cell {{ text-align: right; white-space: nowrap; }}
+        .label-cell {{ text-align: left; }}
+        .total-row {{ font-weight: bold; border-top: 2px solid #333; }}
+        .grand-total {{ border-bottom: 3px double #333; }}
+        .negative {{ color: #d32f2f; }}
+        .excel-sheet-header {{ 
+            background-color: #1f6e43; 
+            color: white; 
+            padding: 10px 20px; 
+            margin-top: 40px; 
+            border-radius: 4px 4px 0 0;
+            display: inline-block;
+        }}
+        .excel-container {{ overflow-x: auto; margin-bottom: 50px; }}
+        
+        /* Dynamic Style Overrides */
+        {style_overrides}
     </style>
 </head>
 <body>
@@ -139,17 +160,75 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-def _save_html(content, title, source_file, output_path):
+def _save_html(content, title, source_file, output_path, style_overrides=""):
     """Wraps content in template and saves file."""
     html = HTML_TEMPLATE.format(
         title=title,
         source_file=os.path.basename(source_file),
         date=datetime.now().strftime("%Y-%m-%d"),
-        content=content
+        content=content,
+        style_overrides=style_overrides
     )
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
     return output_path
+
+def extract_theme_info(prs):
+    """
+    Extracts theme colors and fonts from a PowerPoint presentation.
+    Returns a dict with color scheme and potentially font names.
+    """
+    theme_info = {'colors': {}, 'font': 'inherit'}
+    try:
+        # Access the theme part
+        # [NOTE] Presentation.part.package.part_related_by is a common way to get specific related parts
+        theme_rel_type = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
+        theme_part = prs.part.package.part_related_by(theme_rel_type)
+        if not theme_part: return theme_info
+        
+        xml_content = theme_part.blob
+        root = ET.fromstring(xml_content)
+        
+        # Namespaces
+        ns = {'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'}
+        
+        # 1. Extract Colors
+        clr_scheme = root.find('.//a:clrScheme', ns)
+        if clr_scheme is not None:
+            # Common mapping for Office colors
+            mapping = {
+                'dk1': 'dark1', 'lt1': 'light1', 
+                'accent1': 'accent1', 'accent2': 'accent2', 
+                'accent3': 'accent3', 'accent4': 'accent4'
+            }
+            for tag, label in mapping.items():
+                elem = clr_scheme.find(f'a:{tag}', ns)
+                if elem is not None:
+                    # Look for srgbClr (RGB)
+                    srgb = elem.find('.//a:srgbClr', ns)
+                    if srgb is not None:
+                        val = srgb.get('val')
+                        if val: theme_info['colors'][label] = f"#{val}"
+                    # Or sysClr (System - often white/black)
+                    else:
+                        sys = elem.find('.//a:sysClr', ns)
+                        if sys is not None:
+                            last_clr = sys.get('lastClr')
+                            if last_clr: theme_info['colors'][label] = f"#{last_clr}"
+        
+        # 2. Extract Fonts
+        font_scheme = root.find('.//a:fontScheme', ns)
+        if font_scheme is not None:
+            # Prefer minorFont (body text)
+            minor_font = font_scheme.find('.//a:minorFont/a:latin', ns)
+            if minor_font is not None:
+                typeface = minor_font.get('typeface')
+                if typeface: theme_info['font'] = typeface
+                    
+    except Exception as e:
+        # Silently fail for themes, it's a "nice to have"
+        pass
+    return theme_info
 
 # --- Converters ---
 
@@ -279,29 +358,82 @@ def convert_excel_to_html(xlsx_path):
         
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
-            html_parts.append(f"<h2>Sheet: {sheet_name}</h2>")
-            html_parts.append('<table class="content-table">')
+            html_parts.append(f'<div class="excel-container">')
+            html_parts.append(f'<h3 class="excel-sheet-header">Sheet: {sheet_name}</h3>')
+            html_parts.append('<table class="accounting-table">')
+            
+            # [ACCOUNTING FIX] Detect merged cells to handle headers correctly if possible
+            # (Basic implementation: just treat them as individual cells for now to avoid complexity)
             
             rows = list(ws.rows)
             if rows:
-                # Header
+                # 1. Header Row
                 html_parts.append("<thead><tr>")
                 for cell in rows[0]:
                     val = cell.value if cell.value is not None else ""
-                    html_parts.append(f"<th>{val}</th>")
+                    # Use th with scope for accessibility
+                    html_parts.append(f'<th scope="col">{val}</th>')
                 html_parts.append("</tr></thead>")
                 
-                # Body
+                # 2. Body Rows
                 html_parts.append("<tbody>")
                 for row in rows[1:]:
                     html_parts.append("<tr>")
                     for cell in row:
-                        val = cell.value if cell.value is not None else ""
-                        html_parts.append(f"<td>{val}</td>")
+                        val = cell.value
+                        if val is None:
+                            html_parts.append("<td></td>")
+                            continue
+                            
+                        # Detection: Style Classes
+                        classes = []
+                        
+                        # A. Alignment (Numbers right, Text left)
+                        if isinstance(val, (int, float, datetime)):
+                            classes.append("currency-cell")
+                        else:
+                            classes.append("label-cell")
+                            
+                        # B. Number Formatting (Currency, Percent, Accounting)
+                        fmt = cell.number_format
+                        str_val = str(val)
+                        
+                        if fmt:
+                            if "$" in fmt or "Currency" in fmt or "Accounting" in fmt:
+                                try:
+                                    str_val = f"${val:,.2f}"
+                                    if val < 0: 
+                                        classes.append("negative")
+                                        # Accounting format often uses ( ) for negatives
+                                        str_val = f"({str_val.replace('-', '')})"
+                                except: pass
+                            elif "%" in fmt:
+                                try: str_val = f"{val*100:.1f}%"
+                                except: pass
+                            elif "yyyy" in fmt or "mm" in fmt:
+                                try: str_val = val.strftime("%Y-%m-%d")
+                                except: pass
+                        
+                        # C. Borders (Total Rows)
+                        if cell.border:
+                            if cell.border.bottom and cell.border.bottom.style:
+                                if cell.border.bottom.style == 'double':
+                                    classes.append("grand-total")
+                                else:
+                                    classes.append("total-row")
+                        
+                        # D. Font (Bold)
+                        if cell.font and cell.font.bold:
+                            classes.append("total-row") # Use same bolding style
+
+                        class_attr = f' class="{" ".join(classes)}"' if classes else ""
+                        html_parts.append(f'<td{class_attr}>{str_val}</td>')
+                        
                     html_parts.append("</tr>")
                 html_parts.append("</tbody>")
             
             html_parts.append("</table>")
+            html_parts.append("</div>") # End excel-container
 
         full_content = "\n".join(html_parts)
         
@@ -326,6 +458,26 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
         filename = os.path.splitext(os.path.basename(ppt_path))[0]
         output_dir = os.path.dirname(ppt_path)
         
+        # [THEME AWARENESS] Extract theme data
+        theme = extract_theme_info(prs)
+        style_overrides = ""
+        
+        # Apply Body Font if found
+        if theme['font'] != 'inherit':
+            style_overrides += f"body {{ font-family: '{theme['font']}', sans-serif; }}\n"
+            
+        # Apply Accent Colors to Slide Containers and Headings
+        accent1 = theme['colors'].get('accent1', '#4b3190') # Default purple if not found
+        dark1 = theme['colors'].get('dark1', '#333')
+        light1 = theme['colors'].get('light1', '#fff')
+        
+        style_overrides += f"""
+            .slide-container {{ border-color: {accent1}; background-color: {light1}; }}
+            .slide-title {{ color: {accent1}; }}
+            h1 {{ color: {accent1}; border-bottom-color: {accent1}; }}
+            h2 {{ border-bottom-color: {accent1}; }}
+        """
+
         html_parts = []
         
         for i, slide in enumerate(prs.slides):
@@ -410,14 +562,10 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                         if not txt: continue
                         
                         # Check if this paragraph is actually a bullet
-                        # In python-pptx, a bullet is often indicated by level > 0 OR explicit bullet property
-                        # but often we can just check if the paragraph has a bullet character or is in a bulleted style
                         is_bullet = False
                         try:
-                            # Level > 0 is a strong indicator of intent for bullets in PPT
                             if paragraph.level > 0:
                                 is_bullet = True
-                            # Check if the text actually starts with a bullet-like character if it's level 0
                             elif txt.startswith(('•', '-', '*', '◦', '▪')):
                                 is_bullet = True
                         except: pass
@@ -425,7 +573,6 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                         if is_bullet:
                             text_content.append(f"<li>{txt}</li>")
                         else:
-                            # Close <ul> if it was open (handled by joining logic later)
                             text_content.append(f"<p>{txt}</p>")
                     
                     if text_content:
@@ -460,13 +607,12 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                         html_parts.append('</tr>')
                     html_parts.append('</table>')
 
-                # Images
+                # Images (Alt Text prompts only if no Silent Memory)
                 if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                     try:
                         image = shape.image
                         image_bytes = image.blob
                         ext = image.ext
-                        # Use web_resources/[filename] folder
                         safe_filename = sanitize_filename(filename)
                         res_dir = os.path.join(output_dir, "web_resources", safe_filename)
                         if not os.path.exists(res_dir): os.makedirs(res_dir)
@@ -477,46 +623,31 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                         with open(image_full_path, 'wb') as img_f:
                             img_f.write(image_bytes)
                             
-                        # Embed in HTML with Standard Relative Path
                         rel_path = f"web_resources/{safe_filename}/{image_filename}"
-                        
-                        # [ENHANCED] Calculate dimensions and position for floating
-                        # PPTX uses EMUs (English Metric Units). 1 inch = 914400 EMUs. 
-                        # Web usually treats 96 DPI. So 914400 / 96 = 9525 EMUs per pixel.
                         width_px = int(shape.width / 9525) if hasattr(shape, 'width') else 400
                         
-                        # [USER FIX] Limit image width to 50% of page width when there's text content
-                        # Typical Canvas content area is ~900px, so 50% = 450px max
                         if has_text_content:
-                            max_width = 450  # 50% of typical page width
-                            if width_px > max_width:
-                                width_px = max_width
+                            max_width = 450
+                            if width_px > max_width: width_px = max_width
                         else:
-                            # No text content - allow larger images but still cap at 800px
-                            if width_px > 800:
-                                width_px = 800
+                            if width_px > 800: width_px = 800
                         
-                        # Detect horizontal position on slide (for floating)
                         slide_width = prs.slide_width if hasattr(prs, 'slide_width') else 9144000
                         shape_left = shape.left if hasattr(shape, 'left') else 0
                         shape_center_x = shape_left + (shape.width / 2) if hasattr(shape, 'width') else 0
                         
-                        # Alignment detection
-                        # If image is in the middle 20%, don't float, just center
                         center_threshold = slide_width * 0.1
                         dist_from_center = abs(shape_center_x - (slide_width / 2))
                         
                         if dist_from_center < center_threshold:
                             float_style = "display: block; margin: 20px auto;"
                         elif shape_center_x < slide_width / 2:
-                            # Left side
                             float_style = "float: left; margin: 0 20px 15px 0;"
                         else:
-                            # Right side
                             float_style = "float: right; margin: 0 0 15px 20px;"
                         
-                        # [INTERACTIVE] Prompt for Alt Text
-                        alt_text = f"[FIX_ME] Image from Slide {slide_num}"
+                        # [SMART FIX] Silent Memory and prompt
+                        alt_text = "" # Default to decorative/empty if skipped
                         if io_handler:
                             import interactive_fixer
                             mem_key = interactive_fixer.normalize_image_key(rel_path, image_full_path)
@@ -544,7 +675,7 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
         s_filename = sanitize_filename(filename)
         output_path = os.path.join(output_dir, f"{s_filename}.html")
         
-        _save_html(full_content, filename, ppt_path, output_path)
+        _save_html(full_content, filename, ppt_path, output_path, style_overrides=style_overrides)
         return output_path, None
 
     except Exception as e:

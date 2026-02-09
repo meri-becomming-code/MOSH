@@ -405,8 +405,27 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
         alt = img.get('alt', '').strip()
         
         issue = None
-        
-        # Detection Logic
+
+        # [SILENT MEMORY CHECK] 
+        # Before we even flag an issue, check if this image/alt combo is already in our memories.
+        # This prevents prompting the user twice (once during conversion, once during review).
+        img_full_path = resolve_image_path(src, filepath, root_dir, io_handler)
+        if img_full_path:
+            mem_key = normalize_image_key(src, img_full_path)
+            if mem_key in io_handler.memory:
+                saved_alt = io_handler.memory[mem_key]
+                # If what's in the file already matches our memory, or if we have a memory for it,
+                # we don't need to "Review" it unless it's a critical error (like empty alt).
+                if alt == saved_alt and alt:
+                    # Silence - user already did this.
+                    continue
+                elif saved_alt and not alt:
+                    # The file is missing it but we have it in memory - auto-fill silently
+                    img['alt'] = saved_alt
+                    modified = True
+                    continue
+
+        # Detection Logic (only if not already resolved by memory)
         if 'alt' not in img.attrs:
             issue = "Missing 'alt' attribute"
         elif not alt:
@@ -416,44 +435,50 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
         elif alt.lower() == img_filename.lower():
             issue = "Filename used as alt text"
         
-        # [NEW] Check for Mammoth-style placeholders or descriptions
+        # [SMART SILENCE] Only flag "Review suggested" if we DON'T have a memory for this image.
+        # If we have a memory, even if it contains the word "image", we trust the user's previous choice.
         elif "image" in alt.lower() and len(alt) > 10:
-             # Mammoth often puts the 'title' or 'description' in the alt tag if present.
-             # If it's not a 'bad' word, might be a valid suggestion.
-             issue = "Review suggested alt text"
+             has_memory = False
+             if img_full_path:
+                 mem_key = normalize_image_key(src, img_full_path)
+                 if mem_key in io_handler.memory:
+                     has_memory = True
+             
+             if not has_memory:
+                issue = "Review suggested alt text"
         
         if issue:
             io_handler.log(f"\n  [ISSUE #{i+1}] Image: {src}")
             io_handler.log(f"    Reason: {issue}")
             io_handler.log(f"    Current Alt: '{alt}'")
             
-            # Resolve image path using helper
-            if root_dir: 
-                io_handler.log(f"    [Trace] Resolution Root: {root_dir}")
-                
-            img_full_path = resolve_image_path(src, filepath, root_dir, io_handler)
+            # Context and prompt (resolve_image_path already called above)
             context = get_context(img)
             
-            # [NEW] Check Memory Bank AGAIN with more unique key if path was resolved
+            # Final check of memory before prompting (in case it was just added in this session)
             if img_full_path:
                 mem_key = normalize_image_key(src, img_full_path)
                 if mem_key in io_handler.memory:
                     suggested_alt = io_handler.memory[mem_key]
-                    io_handler.log(f"    [Memory Bank] Found saved alt text for this specific image: '{suggested_alt}'")
                     img['alt'] = suggested_alt
                     modified = True
-                    io_handler.log("    -> Auto-applied from memory.")
                     continue
 
             if not img_full_path:
                  io_handler.log(f"    [Warning] Could not find local image file.")
 
+            prompt_suffix = " (Type '!!' to skip all remaining): "
             if img_full_path and os.path.exists(img_full_path):
-                 prompt_text = f"    > Enter new Alt Text (Press Enter to keep '{alt}'): " if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip): "
+                 prompt_text = (f"    > Enter new Alt Text (Press Enter to keep '{alt}')" if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip)") + prompt_suffix
                  choice = io_handler.prompt_image(prompt_text, img_full_path, context=context).strip()
             else:
-                 prompt_text = f"    > Enter new Alt Text (Press Enter to keep '{alt}'): " if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip): "
+                 prompt_text = (f"    > Enter new Alt Text (Press Enter to keep '{alt}')" if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip)") + prompt_suffix
                  choice = io_handler.prompt(prompt_text).strip()
+            
+            # [OVERRIDE] Allow skipping all remaining items
+            if choice == "!!":
+                io_handler.log("    [OVERRIDE] Skipping all remaining items for this file.")
+                return modified
             
             # If they enter text (or special token), save to memory
             if choice:
@@ -532,8 +557,13 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             if not help_url and href.startswith('http'):
                 help_url = href # Web links are fine as-is
             
-            msg = f"    > Enter new text for this link (Press Enter to use '{suggestion}'): " if suggestion else "    > Enter new text for this link (or Press Enter to skip): "
+            prompt_suffix = " (Type '!!' to skip all remaining): "
+            msg = (f"    > Enter new text for this link (Press Enter to use '{suggestion}')" if suggestion else "    > Enter new text for this link (or Press Enter to skip)") + prompt_suffix
             choice = io_handler.prompt_link(msg, help_url, context=context)
+            
+            if choice == "!!":
+                io_handler.log("    [OVERRIDE] Skipping all remaining items for this file.")
+                return modified
             
             if choice and choice.strip():
                 a.string = choice.strip()
@@ -571,13 +601,19 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
                     suggestion = yt_title
                     io_handler.log(f"    [network] Found: \"{yt_title}\"")
 
+            prompt_suffix = " (Type '!!' to skip all remaining): "
             if suggestion:
                 io_handler.log(f"    [TIP] Suggested Title: \"{suggestion}\"")
-                prompt_text = f"    > Enter Title (Press Enter to use '{suggestion}'): "
+                prompt_text = f"    > Enter Title (Press Enter to use '{suggestion}')" + prompt_suffix
             else:
-                prompt_text = "    > Enter Container Title for this video: "
+                prompt_text = "    > Enter Container Title for this video" + prompt_suffix
             
             choice = io_handler.prompt(prompt_text).strip()
+
+            # [OVERRIDE]
+            if choice == "!!":
+                io_handler.log("    [OVERRIDE] Skipping all remaining items for this file.")
+                return modified
             
             if choice:
                 iframe['title'] = choice
@@ -645,29 +681,24 @@ def audit_filename(filepath, io_handler, root_dir):
     suggested = suggested_base + ext.lower()
     
     if old_name != suggested:
-        io_handler.log(f"\n  [FILENAME ISSUE] \"{old_name}\" contains spaces or special characters.")
-        io_handler.log("    (Bad filenames can break links and cause issues in Canvas/Web)")
+        io_handler.log(f"\n  [AUTO-FIX] Sanitizing filename: \"{old_name}\" -> \"{suggested}\"")
+        new_full_path = os.path.join(dir_name, suggested)
         
-        msg = f"    > Rename to \"{suggested}\"? (And update all project links): "
-        if io_handler.confirm(msg):
-            new_full_path = os.path.join(dir_name, suggested)
+        # 1. Rename File
+        try:
+            if os.path.exists(new_full_path):
+                io_handler.log(f"    [ERROR] Cannot rename: \"{suggested}\" already exists.")
+                return filepath
             
-            # 1. Rename File
-            try:
-                if os.path.exists(new_full_path):
-                    io_handler.log(f"    [ERROR] Cannot rename: \"{suggested}\" already exists.")
-                    return filepath
-                
-                os.rename(old_full_path, new_full_path)
-                io_handler.log(f"    [REPIX] Renamed: {old_name} -> {suggested}")
-                
-                # 2. Global Link Update
-                if root_dir:
-                    fix_link_filenames(root_dir, old_name, suggested, io_handler)
-                
-                return new_full_path
-            except Exception as e:
-                io_handler.log(f"    [ERROR] Rename failed: {e}")
+            os.rename(old_full_path, new_full_path)
+            
+            # 2. Global Link Update
+            if root_dir:
+                fix_link_filenames(root_dir, old_name, suggested, io_handler)
+            
+            return new_full_path
+        except Exception as e:
+            io_handler.log(f"    [ERROR] Rename failed: {e}")
     
     return filepath
 
