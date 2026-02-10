@@ -10,6 +10,8 @@ import urllib.parse
 import re
 import base64
 import tempfile
+import hashlib
+import jeanie_ai
 
 # --- Configuration ---
 BAD_ALT_TEXT = ['image', 'photo', 'picture', 'spacer', 'undefined', 'null']
@@ -36,6 +38,7 @@ class FixerIO:
         # Use user's home directory for global memory
         self.alt_memory_file = os.path.join(os.path.expanduser("~"), ".mosh_alt_memory.json")
         self.memory = self._load_memory()
+        self.api_key = "" # Gemini API Key for Jeanie Magic
 
     def _load_memory(self):
         if os.path.exists(self.alt_memory_file):
@@ -87,11 +90,26 @@ class FixerIO:
     def confirm(self, message):
         return self.prompt(f"{message} (y/n): ").lower().strip() == 'y'
 
-def normalize_image_key(src):
-    """Normalizes an image src to a consistent memory key (URL-decoded basename, lowercase)."""
+def normalize_image_key(src, full_path=None):
+    """
+    Normalizes an image src to a consistent memory key.
+    If full_path is provided and exists, we include file size for uniqueness 
+    (to handle generic names like 'image1.png' from different PPTs).
+    """
     basename = os.path.basename(src)
     decoded = urllib.parse.unquote(basename)
-    return decoded.lower()
+    key = decoded.lower()
+    
+    if full_path and os.path.exists(full_path):
+        try:
+            size = os.path.getsize(full_path)
+            # We use filename + size as a lightweight 'unique enough' key
+            # This prevents 'image1.png' from one PPT being confused with 'image1.png' from another.
+            return f"{key}|sz:{size}"
+        except:
+            pass
+            
+    return key
 
 def get_suggested_title(tag):
     """Attempts to guess a title based on surrounding text."""
@@ -144,7 +162,8 @@ def get_link_suggestion(href):
         # Capitalize words
         suggestion = suggestion.title()
         # Add the extension hint
-        return f"{suggestion} ({ext.upper().strip('.')})"
+        # [CLEAN FIX] Return just the suggestion without the (EXT) hint.
+        return suggestion
 
     # 2. Handle Web Links
     if clean_href.lower().startswith('http'):
@@ -190,6 +209,31 @@ def get_link_suggestion(href):
             return None
             
     return None
+
+def get_image_suggestion(src, context=None):
+    """Generates a smart suggestion for alt text based on filename and context."""
+    if not src: return None
+    
+    # 1. Filename Strategy
+    filename = os.path.basename(src).split('?')[0]
+    name_only = os.path.splitext(filename)[0]
+    
+    # Clean up common junk (UUIDs, 'slide1', etc)
+    clean_name = re.sub(r'[0-9]{5,}', '', name_only) # Remove long numbers
+    clean_name = clean_name.replace('_', ' ').replace('-', ' ').replace('.', ' ')
+    
+    # 2. Context Strategy
+    # If the context is just a few words, it might be the label
+    if context and len(context) < 100:
+        return f"{clean_name.strip().title()} - {context.strip()}"
+    
+    # 3. Handle specific labels
+    if 'logo' in clean_name.lower(): return "Company Logo"
+    if 'icon' in clean_name.lower(): return "" # Suggest decorative for icons
+    
+    suggestion = clean_name.strip().title()
+    if len(suggestion) < 3: return None
+    return suggestion
 
 def fetch_youtube_title(url):
     """Fetches the title of a YouTube video from its URL."""
@@ -389,8 +433,27 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
         alt = img.get('alt', '').strip()
         
         issue = None
-        
-        # Detection Logic
+
+        # [SILENT MEMORY CHECK] 
+        # Before we even flag an issue, check if this image/alt combo is already in our memories.
+        # This prevents prompting the user twice (once during conversion, once during review).
+        img_full_path = resolve_image_path(src, filepath, root_dir, io_handler)
+        if img_full_path:
+            mem_key = normalize_image_key(src, img_full_path)
+            if mem_key in io_handler.memory:
+                saved_alt = io_handler.memory[mem_key]
+                # If what's in the file already matches our memory, or if we have a memory for it,
+                # we don't need to "Review" it unless it's a critical error (like empty alt).
+                if alt == saved_alt and alt:
+                    # Silence - user already did this.
+                    continue
+                elif saved_alt and not alt:
+                    # The file is missing it but we have it in memory - auto-fill silently
+                    img['alt'] = saved_alt
+                    modified = True
+                    continue
+
+        # Detection Logic (only if not already resolved by memory)
         if 'alt' not in img.attrs:
             issue = "Missing 'alt' attribute"
         elif not alt:
@@ -399,48 +462,90 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             issue = f"Generic alt text ('{alt}')"
         elif alt.lower() == img_filename.lower():
             issue = "Filename used as alt text"
-        elif "[fix_me]" in alt.lower():
-             issue = "Marked as [FIX_ME]"
         
-        # [NEW] Check for Mammoth-style placeholders or descriptions
+        # [NEW] Math Equation Check (Flagged by run_fixer)
+        if img.has_attr('data-math-check'):
+             issue = "Potential Math Equation (Needs Verification/LaTeX)"
+        
+        # [SMART SILENCE] Only flag "Review suggested" if we DON'T have a memory for this image.
+        # If we have a memory, even if it contains the word "image", we trust the user's previous choice.
         elif "image" in alt.lower() and len(alt) > 10:
-             # Mammoth often puts the 'title' or 'description' in the alt tag if present.
-             # If it's not a 'bad' word, might be a valid suggestion.
-             issue = "Review suggested alt text"
+             has_memory = False
+             if img_full_path:
+                 mem_key = normalize_image_key(src, img_full_path)
+                 if mem_key in io_handler.memory:
+                     has_memory = True
+             
+             if not has_memory:
+                issue = "Review suggested alt text"
         
         if issue:
             io_handler.log(f"\n  [ISSUE #{i+1}] Image: {src}")
             io_handler.log(f"    Reason: {issue}")
             io_handler.log(f"    Current Alt: '{alt}'")
             
-            # [NEW] Check Memory Bank First (normalize key for consistent matching)
-            mem_key = normalize_image_key(src)
-            if mem_key in io_handler.memory:
-                suggested_alt = io_handler.memory[mem_key]
-                io_handler.log(f"    [Memory Bank] Found saved alt text: '{suggested_alt}'")
-                img['alt'] = suggested_alt
-                modified = True
-                io_handler.log("    -> Auto-applied from memory.")
-                continue
-
-            # Resolve image path using helper
-            if root_dir: 
-                io_handler.log(f"    [Trace] Resolution Root: {root_dir}")
-                
-            img_full_path = resolve_image_path(src, filepath, root_dir, io_handler)
+            # context and prompt (resolve_image_path already called above)
             context = get_context(img)
+            suggestion = get_image_suggestion(src, context)
             
+            # Final check of memory before prompting (in case it was just added in this session)
+            if img_full_path:
+                mem_key = normalize_image_key(src, img_full_path)
+                if mem_key in io_handler.memory:
+                    suggested_alt = io_handler.memory[mem_key]
+                    img['alt'] = suggested_alt
+                    modified = True
+                    continue
+
             if not img_full_path:
                  io_handler.log(f"    [Warning] Could not find local image file.")
 
+            prompt_suffix = " (Type '!!' to skip all remaining): "
+            initial_val = suggestion if suggestion else alt
+            
+            if img.has_attr('data-math-check'):
+                 if io_handler.api_key:
+                     prompt_text = "    > [JEANIE MAGIC] Verify: Is this Math? Enter LaTeX, or 'MAGIC' to auto-generate, or Alt Text if no: "
+                 else:
+                     prompt_text = "    > Verify: Is this a Math Equation? If yes, enter LaTeX (e.g. \\frac{1}{2}). If no, enter Alt Text: "
+            else:
+                 if io_handler.api_key:
+                     prompt_text = f"    > [JEANIE MAGIC] Enter Alt Text (Press Enter for '{initial_val}', or 'MAGIC' to auto-gen)" + prompt_suffix
+                 else:
+                     prompt_text = (f"    > Enter Alt Text (Press Enter for '{initial_val}')" if initial_val else "    > Enter new Alt Text") + prompt_suffix
+            
             if img_full_path and os.path.exists(img_full_path):
-                 prompt_text = f"    > Enter new Alt Text (Press Enter to keep '{alt}'): " if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip): "
                  choice = io_handler.prompt_image(prompt_text, img_full_path, context=context).strip()
             else:
-                 prompt_text = f"    > Enter new Alt Text (Press Enter to keep '{alt}'): " if issue == "Review suggested alt text" else "    > Enter new Alt Text (or Press Enter to skip): "
                  choice = io_handler.prompt(prompt_text).strip()
             
+            # Use suggestion if Enter pressed and suggestion exists
+            if not choice and initial_val:
+                choice = initial_val
+            
+            # [OVERRIDE] Allow skipping all remaining items
+            if choice == "!!":
+                io_handler.log("    [OVERRIDE] Skipping all remaining items for this file.")
+                return modified
+            
             # If they enter text (or special token), save to memory
+            # [JEANIE MAGIC] Handle Auto-LaTeX / Auto-AltText
+            if choice.upper() == "MAGIC" and io_handler.api_key and img_full_path:
+                if img.has_attr('data-math-check'):
+                    io_handler.log("    [JEANIE] Consulting the oracle for LaTeX...")
+                    ai_suggestion, msg = jeanie_ai.generate_latex_from_image(img_full_path, io_handler.api_key)
+                else:
+                    io_handler.log("    [JEANIE] Consulting the oracle for Alt-Text...")
+                    ai_suggestion, msg = jeanie_ai.generate_alt_text_from_image(img_full_path, io_handler.api_key, context=context)
+                
+                if ai_suggestion:
+                    io_handler.log(f"    [JEANIE] Generated: {ai_suggestion}")
+                    choice = ai_suggestion
+                else:
+                    io_handler.log(f"    [JEANIE] Error: {msg}")
+                    # Re-prompt
+                    choice = io_handler.prompt("    > Please enter text manually: ").strip()
+
             if choice:
                 # [DECORATIVE LOGIC]
                 if choice == "__DECORATIVE__":
@@ -462,9 +567,15 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
                 io_handler.save_memory()
                 
                 # Remove any warning spans/markers if they exist
-                next_node = img.find_next_sibling()
-                if next_node and next_node.name == 'span' and "ADA FIX" in next_node.get_text():
-                     next_node.extract()
+                if img.has_attr('data-math-check'):
+                    # If it was a math check, and they entered something, we can mark it as handled
+                    if choice:
+                        img['data-math'] = choice
+                        # Also put it in Alt so non-MathJax users can see it
+                        img['alt'] = f"Equation: {choice}"
+                        io_handler.memory[mem_key] = f"Equation: {choice}"
+                    del img['data-math-check']
+                pass
                 
                 modified = True
                 
@@ -496,9 +607,6 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
         # Check for Vague Text
         elif text.lower() in BAD_LINK_TEXT:
             issue = f"Vague link text ('{text}')"
-        elif "[fix_me]" in text.lower():
-            issue = "Marked as [FIX_ME]"
-        
         # Check for Raw URL as Text or Filenames
         elif text.lower() == href.lower() or (text.lower().startswith('http') and len(text) > 20):
              issue = "Raw URL used as link text"
@@ -520,8 +628,13 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
             if not help_url and href.startswith('http'):
                 help_url = href # Web links are fine as-is
             
-            msg = f"    > Enter new text for this link (Press Enter to use '{suggestion}'): " if suggestion else "    > Enter new text for this link (or Press Enter to skip): "
+            prompt_suffix = " (Type '!!' to skip all remaining): "
+            msg = (f"    > Enter new text for this link (Press Enter to use '{suggestion}')" if suggestion else "    > Enter new text for this link (or Press Enter to skip)") + prompt_suffix
             choice = io_handler.prompt_link(msg, help_url, context=context)
+            
+            if choice == "!!":
+                io_handler.log("    [OVERRIDE] Skipping all remaining items for this file.")
+                return modified
             
             if choice and choice.strip():
                 a.string = choice.strip()
@@ -559,13 +672,19 @@ def scan_and_fix_file(filepath, io_handler=None, root_dir=None):
                     suggestion = yt_title
                     io_handler.log(f"    [network] Found: \"{yt_title}\"")
 
+            prompt_suffix = " (Type '!!' to skip all remaining): "
             if suggestion:
                 io_handler.log(f"    [TIP] Suggested Title: \"{suggestion}\"")
-                prompt_text = f"    > Enter Title (Press Enter to use '{suggestion}'): "
+                prompt_text = f"    > Enter Title (Press Enter to use '{suggestion}')" + prompt_suffix
             else:
-                prompt_text = "    > Enter Container Title for this video: "
+                prompt_text = "    > Enter Container Title for this video" + prompt_suffix
             
             choice = io_handler.prompt(prompt_text).strip()
+
+            # [OVERRIDE]
+            if choice == "!!":
+                io_handler.log("    [OVERRIDE] Skipping all remaining items for this file.")
+                return modified
             
             if choice:
                 iframe['title'] = choice
@@ -633,29 +752,24 @@ def audit_filename(filepath, io_handler, root_dir):
     suggested = suggested_base + ext.lower()
     
     if old_name != suggested:
-        io_handler.log(f"\n  [FILENAME ISSUE] \"{old_name}\" contains spaces or special characters.")
-        io_handler.log("    (Bad filenames can break links and cause issues in Canvas/Web)")
+        io_handler.log(f"\n  [AUTO-FIX] Sanitizing filename: \"{old_name}\" -> \"{suggested}\"")
+        new_full_path = os.path.join(dir_name, suggested)
         
-        msg = f"    > Rename to \"{suggested}\"? (And update all project links): "
-        if io_handler.confirm(msg):
-            new_full_path = os.path.join(dir_name, suggested)
+        # 1. Rename File
+        try:
+            if os.path.exists(new_full_path):
+                io_handler.log(f"    [ERROR] Cannot rename: \"{suggested}\" already exists.")
+                return filepath
             
-            # 1. Rename File
-            try:
-                if os.path.exists(new_full_path):
-                    io_handler.log(f"    [ERROR] Cannot rename: \"{suggested}\" already exists.")
-                    return filepath
-                
-                os.rename(old_full_path, new_full_path)
-                io_handler.log(f"    [REPIX] Renamed: {old_name} -> {suggested}")
-                
-                # 2. Global Link Update
-                if root_dir:
-                    fix_link_filenames(root_dir, old_name, suggested, io_handler)
-                
-                return new_full_path
-            except Exception as e:
-                io_handler.log(f"    [ERROR] Rename failed: {e}")
+            os.rename(old_full_path, new_full_path)
+            
+            # 2. Global Link Update
+            if root_dir:
+                fix_link_filenames(root_dir, old_name, suggested, io_handler)
+            
+            return new_full_path
+        except Exception as e:
+            io_handler.log(f"    [ERROR] Rename failed: {e}")
     
     return filepath
 
@@ -715,10 +829,13 @@ def main_interactive_mode(io_handler=None):
 
     # 2. Files Discovery
     html_files = []
+    archive_name = "_ORIGINALS_DO_NOT_UPLOAD_"
     for root, dirs, files in os.walk(root_dir):
+        if archive_name in root: continue
         for file in files:
             if file.endswith(".html"):
                 html_files.append(os.path.join(root, file))
+
     
     if not html_files:
          io_handler.log("No .html files found in this directory.")

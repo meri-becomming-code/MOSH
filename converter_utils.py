@@ -10,6 +10,9 @@ import zipfile
 import base64
 import uuid
 import xml.etree.ElementTree as ET
+import urllib.parse
+from bs4 import BeautifulSoup
+
 
 # --- Constants ---
 ARCHIVE_FOLDER_NAME = "_ORIGINALS_DO_NOT_UPLOAD_"
@@ -75,33 +78,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 16px;
             line-height: 1.6; 
             color: #333;
-            max-width: 900px; 
-            margin: 0 auto; 
-            padding: 40px; 
+            max-width: none; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f4f7f9;
+        }}
+        .main-content {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px;
         }}
         h1 {{ 
             font-size: 2.25em; 
             font-weight: 700;
             color: #4b3190; 
-            border-bottom: 2px solid #e0e0e0; 
-            padding-bottom: 10px; 
-            margin-bottom: 30px;
+            border-bottom: 2px solid #4b3190; 
+            padding-bottom: 15px; 
+            margin-bottom: 40px;
+            text-align: center;
         }}
-        h2 {{ color: #2c3e50; margin-top: 40px; font-weight: 600; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+        h2 {{ color: #2c3e50; margin-top: 40px; font-weight: 600; border-bottom: 1px solid #dee2e6; padding-bottom: 5px; }}
         h3 {{ color: #444; margin-top: 30px; font-weight: 600; }}
-        a {{ color: #0056b3; text-decoration: none; }}
+        a {{ color: #0056b3; text-decoration: none; font-weight: 500; }}
         a:hover {{ text-decoration: underline; }}
         
         /* Table Styles */
-        table {{ border-collapse: collapse; width: 100%; margin: 25px 0; font-size: 0.95em; border: 1px solid #ddd; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 25px 0; font-size: 0.95em; border: 1px solid #ddd; background-color: #fff; }}
         th, td {{ border: 1px solid #ddd; padding: 12px 15px; text-align: left; }}
         th {{ background-color: #f8f9fa; font-weight: 600; color: #495057; }}
-        tr:nth-child(even) {{ background-color: #fcfcfc; }}
+        tr:nth-child(even) {{ background-color: #f9f9f9; }}
         .content-table {{ width: 100%; border-collapse: collapse; }}
         
         img {{ max-width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; }}
-        .grading-note {{ background-color: #e8f5e9; padding: 10px; border-left: 4px solid #4caf50; font-style: italic; }}
-        .note {{ font-size: 0.9em; color: #666; background: #fff3cd; padding: 15px; border-radius: 4px; border: 1px solid #ffeeba; }}
+        .grading-note {{ background-color: #e8f5e9; padding: 15px; border-left: 5px solid #4caf50; font-style: italic; border-radius: 0 4px 4px 0; }}
+        .note {{ font-size: 0.95em; color: #555; background: #fff3cd; padding: 20px; border-radius: 8px; border: 1px solid #ffeeba; margin-bottom: 25px; }}
         
         /* Code Block Styles */
         code {{ background-color: #f1f3f5; padding: 2px 5px; border-radius: 4px; font-family: Consolas, 'Courier New', monospace; color: #d63384; }}
@@ -114,37 +124,161 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-family: Consolas, 'Courier New', monospace; 
             line-height: 1.4;
             margin: 20px 0;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }}
         .code-block {{ margin: 15px 0; }}
         
-        .slide-container {{ overflow: auto; clear: both; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 1px solid #eee; }}
+        .slide-container {{ 
+            overflow: auto; 
+            clear: both; 
+            margin-bottom: 60px; 
+            padding: 60px; 
+            border: 2px solid #ccc;
+            border-top: 5px solid #4b3190;
+            border-radius: 12px; 
+            background-color: #fff;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            position: relative;
+        }}
         .slide-container::after {{ content: ""; display: table; clear: both; }}
-        .slide-image {{ border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        .slide-title {{ margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #eee; margin-bottom: 25px; }}
+        .slide-num {{ position: absolute; top: 15px; right: 25px; font-size: 0.8em; color: #666; font-weight: bold; }}
+        .slide-image {{ border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid #eee; }}
+        
+        /* Accounting & Excel Styles */
+        .accounting-table {{ border-collapse: collapse; margin: 25px 0; font-family: 'Courier New', Courier, monospace; width: auto; min-width: 50%; }}
+        .accounting-table th, .accounting-table td {{ border: 1px solid #ccc; padding: 8px 12px; }}
+        .currency-cell {{ text-align: right; white-space: nowrap; }}
+        .label-cell {{ text-align: left; }}
+        .total-row {{ font-weight: bold; border-top: 2px solid #333; }}
+        .grand-total {{ border-bottom: 3px double #333; }}
+        .negative {{ color: #d32f2f; }}
+        .excel-sheet-header {{ 
+            background-color: #1f6e43; 
+            color: white; 
+            padding: 10px 20px; 
+            margin-top: 40px; 
+            border-radius: 4px 4px 0 0;
+            display: inline-block;
+        }}
+        .excel-container {{ overflow-x: auto; margin-bottom: 50px; }}
+        
+        /* Dynamic Style Overrides */
+        {style_overrides}
     </style>
 </head>
 <body>
-    <h1>{title}</h1>
-    <p class="note">✅ Remediated content from {source_file}</p>
-    {content}
+    <div class="main-content" style="max-width: 1200px; margin: 0 auto; padding: 40px;">
+        <h1>{title}</h1>
+        {content}
+    </div>
 </body>
 </html>
+
 """
 
-def _save_html(content, title, source_file, output_path):
+
+def _save_html(content, title, source_file, output_path, style_overrides=""):
     """Wraps content in template and saves file."""
     html = HTML_TEMPLATE.format(
         title=title,
-        source_file=os.path.basename(source_file),
-        date=datetime.now().strftime("%Y-%m-%d"),
-        content=content
+        content=content,
+        style_overrides=style_overrides
     )
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
     return output_path
 
+def optimize_image(image_path, max_width=1100, make_transparent=False):
+    """Resizes, compresses, and optionally removes white backgrounds from images."""
+    try:
+        from PIL import Image, ImageDraw
+        img = Image.open(image_path).convert("RGBA")
+        
+        # 1. Resize if too wide (prevent Canvas bloat)
+        w, h = img.size
+        if w > max_width:
+            ratio = max_width / float(w)
+            new_h = int(float(h) * ratio)
+            img = img.resize((max_width, new_h), Image.Resampling.LANCZOS)
+            w, h = max_width, new_h
+
+        # 2. Magic Background Removal (Optional)
+        if make_transparent:
+            # Check corners for white-ish color
+            for corner in [(0,0), (w-1, 0), (0, h-1), (w-1, h-1)]:
+                # If corner is purely white, floodfill transparency
+                p = img.getpixel(corner)
+                if p[0] > 240 and p[1] > 240 and p[2] > 240:
+                    ImageDraw.floodfill(img, xy=corner, value=(255, 255, 255, 0), thresh=15)
+        
+        # 3. Save optimized
+        img.save(image_path, "PNG", optimize=True)
+        return True
+    except Exception as e:
+        print(f"Image Optimization failed for {image_path}: {e}")
+        return False
+
+def extract_theme_info(prs):
+    """
+    Extracts theme colors and fonts from a PowerPoint presentation.
+    Returns a dict with color scheme and potentially font names.
+    """
+    theme_info = {'colors': {}, 'font': 'inherit'}
+    try:
+        # Access the theme part
+        # [NOTE] Presentation.part.package.part_related_by is a common way to get specific related parts
+        theme_rel_type = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
+        theme_part = prs.part.package.part_related_by(theme_rel_type)
+        if not theme_part: return theme_info
+        
+        xml_content = theme_part.blob
+        root = ET.fromstring(xml_content)
+        
+        # Namespaces
+        ns = {'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'}
+        
+        # 1. Extract Colors
+        clr_scheme = root.find('.//a:clrScheme', ns)
+        if clr_scheme is not None:
+            # Common mapping for Office colors
+            mapping = {
+                'dk1': 'dark1', 'lt1': 'light1', 
+                'accent1': 'accent1', 'accent2': 'accent2', 
+                'accent3': 'accent3', 'accent4': 'accent4'
+            }
+            for tag, label in mapping.items():
+                elem = clr_scheme.find(f'a:{tag}', ns)
+                if elem is not None:
+                    # Look for srgbClr (RGB)
+                    srgb = elem.find('.//a:srgbClr', ns)
+                    if srgb is not None:
+                        val = srgb.get('val')
+                        if val: theme_info['colors'][label] = f"#{val}"
+                    # Or sysClr (System - often white/black)
+                    else:
+                        sys = elem.find('.//a:sysClr', ns)
+                        if sys is not None:
+                            last_clr = sys.get('lastClr')
+                            if last_clr: theme_info['colors'][label] = f"#{last_clr}"
+        
+        # 2. Extract Fonts
+        font_scheme = root.find('.//a:fontScheme', ns)
+        if font_scheme is not None:
+            # Prefer minorFont (body text)
+            minor_font = font_scheme.find('.//a:minorFont/a:latin', ns)
+            if minor_font is not None:
+                typeface = minor_font.get('typeface')
+                if typeface: theme_info['font'] = typeface
+                    
+    except Exception as e:
+        # Silently fail for themes, it's a "nice to have"
+        pass
+    return theme_info
+
 # --- Converters ---
 
-def convert_docx_to_html(docx_path):
+def convert_docx_to_html(docx_path, io_handler=None):
     """Converts DOCX to HTML using Mammoth (with style mapping)."""
     if not mammoth:
         return None, "Mammoth library not installed."
@@ -174,8 +308,8 @@ def convert_docx_to_html(docx_path):
             if not os.path.exists(res_dir):
                 os.makedirs(res_dir)
             
-            # 2. Extract description
-            alt_text = image.alt_text if image.alt_text else f"Image from {filename}"
+            # 2. Extract description (from original doc)
+            original_alt = image.alt_text if image.alt_text else f"Image from {filename}"
             
             # 3. Save Image File
             with image.open() as image_source:
@@ -200,19 +334,34 @@ def convert_docx_to_html(docx_path):
             try:
                 with PILImage.open(io.BytesIO(image_bytes)) as pil_img:
                     w, h = pil_img.size
-                    # If it's a small icon-like image, don't force full width
                     if w < 200:
                         width_attr = str(w)
                         style_attr = "" # Keep natural
                     else:
-                        # For medium/large images, cap at a reasonable width but allow relative scaling
                         width_attr = str(min(w, 800))
             except: pass
+
+            # [INTERACTIVE] Prompt for Alt Text
+            final_alt = original_alt
+            if io_handler:
+                import interactive_fixer
+                mem_key = interactive_fixer.normalize_image_key(img_name, img_path)
+                if mem_key in io_handler.memory:
+                    final_alt = io_handler.memory[mem_key]
+                else:
+                    choice = io_handler.prompt_image(f"   > Alt Text for {img_name} (or Enter to keep original): ", img_path, context=f"Context: {filename} (Word Document)").strip()
+                    if choice:
+                        if choice == "__DECORATIVE__":
+                            final_alt = ""
+                        else:
+                            final_alt = choice
+                        io_handler.memory[mem_key] = final_alt
+                        io_handler.save_memory()
 
             # 4. Return Tag with Standard Relative Path
             return {
                 "src": f"web_resources/{safe_filename}/{img_name}",
-                "alt": alt_text,
+                "alt": final_alt,
                 "width": width_attr,
                 "style": style_attr
             }
@@ -232,6 +381,23 @@ def convert_docx_to_html(docx_path):
         
         # Ensure tables have some basic class for our CSS
         html_content = html_content.replace("<table>", '<table class="content-table">')
+        
+        # [NEW] Remove empty tables that often come from Word formatting
+        temp_soup = BeautifulSoup(html_content, 'html.parser')
+        tables_removed = 0
+        for table in temp_soup.find_all('table'):
+            has_content = False
+            for cell in table.find_all(['td', 'th']):
+                if cell.get_text(strip=True) or cell.find('img'):
+                    has_content = True
+                    break
+            if not has_content:
+                table.extract()
+                tables_removed += 1
+        
+        if tables_removed > 0:
+            print(f"    [LOG] Removed {tables_removed} empty tables from Word document.")
+            html_content = str(temp_soup)
 
         s_filename = sanitize_filename(filename)
         output_path = os.path.join(output_dir, f"{s_filename}.html")
@@ -255,29 +421,82 @@ def convert_excel_to_html(xlsx_path):
         
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
-            html_parts.append(f"<h2>Sheet: {sheet_name}</h2>")
-            html_parts.append('<table class="content-table">')
+            html_parts.append(f'<div class="excel-container">')
+            html_parts.append(f'<h3 class="excel-sheet-header">Sheet: {sheet_name}</h3>')
+            html_parts.append('<table class="accounting-table">')
+            
+            # [ACCOUNTING FIX] Detect merged cells to handle headers correctly if possible
+            # (Basic implementation: just treat them as individual cells for now to avoid complexity)
             
             rows = list(ws.rows)
             if rows:
-                # Header
+                # 1. Header Row
                 html_parts.append("<thead><tr>")
                 for cell in rows[0]:
                     val = cell.value if cell.value is not None else ""
-                    html_parts.append(f"<th>{val}</th>")
+                    # Use th with scope for accessibility
+                    html_parts.append(f'<th scope="col">{val}</th>')
                 html_parts.append("</tr></thead>")
                 
-                # Body
+                # 2. Body Rows
                 html_parts.append("<tbody>")
                 for row in rows[1:]:
                     html_parts.append("<tr>")
                     for cell in row:
-                        val = cell.value if cell.value is not None else ""
-                        html_parts.append(f"<td>{val}</td>")
+                        val = cell.value
+                        if val is None:
+                            html_parts.append("<td></td>")
+                            continue
+                            
+                        # Detection: Style Classes
+                        classes = []
+                        
+                        # A. Alignment (Numbers right, Text left)
+                        if isinstance(val, (int, float, datetime)):
+                            classes.append("currency-cell")
+                        else:
+                            classes.append("label-cell")
+                            
+                        # B. Number Formatting (Currency, Percent, Accounting)
+                        fmt = cell.number_format
+                        str_val = str(val)
+                        
+                        if fmt:
+                            if "$" in fmt or "Currency" in fmt or "Accounting" in fmt:
+                                try:
+                                    str_val = f"${val:,.2f}"
+                                    if val < 0: 
+                                        classes.append("negative")
+                                        # Accounting format often uses ( ) for negatives
+                                        str_val = f"({str_val.replace('-', '')})"
+                                except: pass
+                            elif "%" in fmt:
+                                try: str_val = f"{val*100:.1f}%"
+                                except: pass
+                            elif "yyyy" in fmt or "mm" in fmt:
+                                try: str_val = val.strftime("%Y-%m-%d")
+                                except: pass
+                        
+                        # C. Borders (Total Rows)
+                        if cell.border:
+                            if cell.border.bottom and cell.border.bottom.style:
+                                if cell.border.bottom.style == 'double':
+                                    classes.append("grand-total")
+                                else:
+                                    classes.append("total-row")
+                        
+                        # D. Font (Bold)
+                        if cell.font and cell.font.bold:
+                            classes.append("total-row") # Use same bolding style
+
+                        class_attr = f' class="{" ".join(classes)}"' if classes else ""
+                        html_parts.append(f'<td{class_attr}>{str_val}</td>')
+                        
                     html_parts.append("</tr>")
                 html_parts.append("</tbody>")
             
             html_parts.append("</table>")
+            html_parts.append("</div>") # End excel-container
 
         full_content = "\n".join(html_parts)
         
@@ -292,7 +511,75 @@ def convert_excel_to_html(xlsx_path):
         return None, str(e)
 
 
-def convert_ppt_to_html(ppt_path):
+def get_shape_text_styles(shape, theme=None):
+    """Extracts CSS styles (color, background-color, border, rotation) from a shape."""
+    styles = []
+    
+    # 1. Background Color (Shape Fill)
+    try:
+        if shape.fill.type == 1: # Solid fill
+            rgb = shape.fill.fore_color.rgb
+            if rgb: styles.append(f"background-color: #{rgb};")
+    except: pass
+    
+    # 2. Border / Line
+    try:
+        if shape.line.fill.type == 1: # Solid line
+            rgb = shape.line.color.rgb
+            width = int(shape.line.width / 12700) # CM to Px approx
+            if rgb: styles.append(f"border: {width}px solid #{rgb};")
+    except: pass
+
+    # 3. Rotation
+    try:
+        if shape.rotation != 0:
+            styles.append(f"transform: rotate({shape.rotation}deg);")
+    except: pass
+
+    # 4. Text Color (Looking at first paragraph/run)
+    try:
+        if shape.has_text_frame and shape.text_frame.paragraphs:
+            para = shape.text_frame.paragraphs[0]
+            if para.runs:
+                rgb = para.runs[0].font.color.rgb
+                if rgb: styles.append(f"color: #{rgb};")
+            elif para.font.color and para.font.color.rgb:
+                 styles.append(f"color: #{para.font.color.rgb};")
+    except: pass
+    
+    # 5. Padding/Border if background/border exists
+    if any(k in s for s in styles for k in ["background-color", "border"]):
+        styles.append("padding: 15px; border-radius: 8px; margin-bottom: 10px;")
+    
+    return " ".join(styles)
+
+def get_image_styles(shape):
+    """Specific styles for pictures like borders and rotation."""
+    styles = []
+    try:
+        if shape.rotation != 0:
+            styles.append(f"transform: rotate({shape.rotation}deg);")
+        
+        if shape.line.fill.type == 1:
+            rgb = shape.line.color.rgb
+            width = int(shape.line.width / 12700)
+            if rgb: styles.append(f"border: {width}px solid #{rgb};")
+    except: pass
+    return " ".join(styles)
+
+
+def extract_all_shapes_recursive(shapes):
+    """Recursively flattened list of shapes (handles groups)."""
+    flat_list = []
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            flat_list.extend(extract_all_shapes_recursive(shape.shapes))
+        else:
+            flat_list.append(shape)
+    return flat_list
+
+
+def convert_ppt_to_html(ppt_path, io_handler=None):
     """Converts PPTX to HTML Lecture Notes + Extracts Images."""
     if not Presentation:
         return None, "python-pptx library not installed."
@@ -302,12 +589,42 @@ def convert_ppt_to_html(ppt_path):
         filename = os.path.splitext(os.path.basename(ppt_path))[0]
         output_dir = os.path.dirname(ppt_path)
         
+        # [THEME AWARENESS] Extract theme data
+        theme = extract_theme_info(prs)
+        style_overrides = ""
+        
+        # Apply Body Font if found
+        if theme['font'] != 'inherit':
+            style_overrides += f"body {{ font-family: '{theme['font']}', sans-serif; }}\n"
+            
+        # Apply Accent Colors to Slide Containers and Headings
+        accent1 = theme['colors'].get('accent1', '#4b3190') # Default purple if not found
+        dark1 = theme['colors'].get('dark1', '#333')
+        light1 = theme['colors'].get('light1', '#fff')
+        
+        style_overrides += f"""
+            .slide-container {{ border-top-color: {accent1}; border-top-width: 5px; border-left: 2px solid #ccc; border-right: 2px solid #ccc; border-bottom: 2px solid #ccc; background-color: {light1}; }}
+            .slide-title {{ color: {dark1}; border-bottom-color: {accent1}; }}
+            h1 {{ color: {accent1}; border-bottom-color: {accent1}; }}
+            h2 {{ border-bottom-color: {accent1}; }}
+        """
+
+
         html_parts = []
         
         for i, slide in enumerate(prs.slides):
             slide_num = i + 1
-            html_parts.append(f'<div class="slide-container" id="slide-{slide_num}">')
-            html_parts.append(f'<p class="note">Slide {slide_num}</p>')
+            
+            # [NEW] Inline style for slide container (Canvas survival)
+            slide_style = (
+                f"margin-bottom: 60px; padding: 60px; border: 2px solid #ccc; "
+                f"border-top: 5px solid {accent1}; border-radius: 12px; "
+                f"background-color: {light1}; box-shadow: 0 8px 30px rgba(0,0,0,0.1); "
+                f"position: relative; overflow: auto; clear: both;"
+            )
+            html_parts.append(f'<div class="slide-container" id="slide-{slide_num}" style="{slide_style}">')
+            html_parts.append(f'<div class="slide-num" style="position: absolute; top: 15px; right: 25px; font-size: 0.8em; color: #666; font-weight: bold;">Slide {slide_num}</div>')
+
             
             # [NEW] Detect if slide has text content (for image sizing)
             has_text_content = False
@@ -323,7 +640,24 @@ def convert_ppt_to_html(ppt_path):
                 html_parts.append(f'<h2 class="slide-title">{title_text}</h2>')
             
             # Content (Text & Images)
-            for shape in slide.shapes:
+            # [BARNEY FIX] Recursive extraction to catch text inside Groups
+            all_shapes = extract_all_shapes_recursive(slide.shapes)
+            
+            # Sort shapes by position to ensure reading order and side-by-side floating
+            # We round to nearest 10 pixels to group items that are roughly on the same vertical line
+            def shape_sort_key(s):
+                try:
+                    top = getattr(s, 'top', 0)
+                    left = getattr(s, 'left', 0)
+                    # Prioritize images slightly if they are on the same line to ensure they float correctly
+                    priority = 0 if s.shape_type == MSO_SHAPE_TYPE.PICTURE else 1
+                    return (round(top / 95250) * 10, priority, left)
+                except:
+                    return (0, 0, 0)
+
+            sorted_shapes = sorted(all_shapes, key=shape_sort_key)
+            
+            for shape in sorted_shapes:
                 # Text
                 if shape.has_text_frame:
                     if shape == slide.shapes.title: continue 
@@ -364,31 +698,65 @@ def convert_ppt_to_html(ppt_path):
                         html_parts.append(f'<pre class="code-block" style="{style}">{safe_text}</pre>')
                         continue
 
-                    # [SMART FIX] 2. Improved Bullet Detection
-                    # Instead of assuming bullets, we check the actual paragraph level/bullet property
+                    # [NEW] Extract Text Box Styles (Colors/Backgrounds)
+                    box_style = get_shape_text_styles(shape, theme)
+                    if box_style:
+                        html_parts.append(f'<div class="text-box" style="{box_style}">')
+
+                    # [SMART FIX] 2. Improved Bullet Detection + Hyperlink Preservation
                     text_content = []
                     for paragraph in shape.text_frame.paragraphs:
-                        txt = paragraph.text.strip()
-                        if not txt: continue
+                        if not paragraph.text.strip(): continue
                         
+                        # Build paragraph content from runs to preserve links
+                        para_html_parts = []
+                        for run in paragraph.runs:
+                            run_text = run.text.replace("<", "&lt;").replace(">", "&gt;")
+                            if not run_text: continue
+                            
+                            # Check for Hyperlink
+                            hlink = run.hyperlink.address
+                            if hlink:
+                                para_html_parts.append(f'<a href="{hlink}">{run_text}</a>')
+                            else:
+                                # Preserving Styles (Bold, Italic, Color, Font)
+                                transformed = run_text
+                                try:
+                                    inline_styles = []
+                                    if run.font.color and run.font.color.rgb:
+                                        inline_styles.append(f"color: #{run.font.color.rgb};")
+                                    if run.font.name:
+                                        inline_styles.append(f"font-family: '{run.font.name}', sans-serif;")
+                                    if run.font.size:
+                                        size_pt = int(run.font.size / 12700)
+                                        # Only keep if >= 10pt per user request for readability
+                                        if size_pt >= 10:
+                                            inline_styles.append(f"font-size: {size_pt}pt;")
+                                    
+                                    if inline_styles:
+                                        transformed = f'<span style="{" ".join(inline_styles)}">{transformed}</span>'
+                                    
+                                    if run.font.bold: transformed = f"<strong>{transformed}</strong>"
+                                    if run.font.italic: transformed = f"<em>{transformed}</em>"
+                                except: pass
+                                para_html_parts.append(transformed)
+                        
+                        full_para_html = "".join(para_html_parts)
+                        if not full_para_html.strip(): continue
+
                         # Check if this paragraph is actually a bullet
-                        # In python-pptx, a bullet is often indicated by level > 0 OR explicit bullet property
-                        # but often we can just check if the paragraph has a bullet character or is in a bulleted style
                         is_bullet = False
                         try:
-                            # Level > 0 is a strong indicator of intent for bullets in PPT
                             if paragraph.level > 0:
                                 is_bullet = True
-                            # Check if the text actually starts with a bullet-like character if it's level 0
-                            elif txt.startswith(('•', '-', '*', '◦', '▪')):
+                            elif paragraph.text.strip().startswith(('•', '-', '*', '◦', '▪')):
                                 is_bullet = True
                         except: pass
 
                         if is_bullet:
-                            text_content.append(f"<li>{txt}</li>")
+                            text_content.append(f"<li>{full_para_html}</li>")
                         else:
-                            # Close <ul> if it was open (handled by joining logic later)
-                            text_content.append(f"<p>{txt}</p>")
+                            text_content.append(f"<p>{full_para_html}</p>")
                     
                     if text_content:
                         final_shape_html = ""
@@ -407,28 +775,39 @@ def convert_ppt_to_html(ppt_path):
                         if in_list:
                             final_shape_html += "</ul>"
                         html_parts.append(final_shape_html)
+                    
+                    if box_style:
+                        html_parts.append('</div>')
 
                 # Tables
                 if shape.has_table:
-                    html_parts.append('<table class="content-table" border="1">')
+                    # [NEW] Check if table is empty
+                    is_empty = True
                     for row in shape.table.rows:
-                        html_parts.append('<tr>')
                         for cell in row.cells:
-                            # Extract text from cell
-                            cell_text = ""
-                            if cell.text_frame:
-                                cell_text = cell.text_frame.text.strip()
-                            html_parts.append(f'<td>{cell_text}</td>')
-                        html_parts.append('</tr>')
-                    html_parts.append('</table>')
+                            if cell.text_frame and cell.text_frame.text.strip():
+                                is_empty = False
+                                break
+                    
+                    if not is_empty:
+                        html_parts.append('<table class="content-table" border="1">')
+                        for row in shape.table.rows:
+                            html_parts.append('<tr>')
+                            for cell in row.cells:
+                                # Extract text from cell
+                                cell_text = ""
+                                if cell.text_frame:
+                                    cell_text = cell.text_frame.text.strip()
+                                html_parts.append(f'<td>{cell_text}</td>')
+                            html_parts.append('</tr>')
+                        html_parts.append('</table>')
 
-                # Images
+                # Images (Alt Text prompts only if no Silent Memory)
                 if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                     try:
                         image = shape.image
                         image_bytes = image.blob
                         ext = image.ext
-                        # Use web_resources/[filename] folder
                         safe_filename = sanitize_filename(filename)
                         res_dir = os.path.join(output_dir, "web_resources", safe_filename)
                         if not os.path.exists(res_dir): os.makedirs(res_dir)
@@ -436,51 +815,75 @@ def convert_ppt_to_html(ppt_path):
                         image_filename = f"slide{slide_num}_{uuid.uuid4().hex[:6]}.{ext}"
                         image_full_path = os.path.join(res_dir, image_filename)
                         
+                        # 1. Save original bytes first
                         with open(image_full_path, 'wb') as img_f:
                             img_f.write(image_bytes)
-                            
-                        # Use Canvas-compatible path with $IMS-CC-FILEBASE$ token
-                        # This works regardless of where the HTML file is located in the package
-                        rel_path = f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{image_filename}"
+
                         
-                        # [ENHANCED] Calculate dimensions and position for floating
-                        # PPTX uses EMUs (English Metric Units). 1 inch = 914400 EMUs. 
-                        # Web usually treats 96 DPI. So 914400 / 96 = 9525 EMUs per pixel.
+                        # 2. [NEW] Image Optimization & Magic Transparency
+                        # We save as PNG for transparency support
+                        optimize_image(image_full_path, max_width=400, make_transparent=True)
+                        
+                        rel_path = f"web_resources/{safe_filename}/{image_filename}"
                         width_px = int(shape.width / 9525) if hasattr(shape, 'width') else 400
                         
-                        # [USER FIX] Limit image width to 50% of page width when there's text content
-                        # Typical Canvas content area is ~900px, so 50% = 450px max
                         if has_text_content:
-                            max_width = 450  # 50% of typical page width
-                            if width_px > max_width:
-                                width_px = max_width
+                            max_width = 450
+                            if width_px > max_width: width_px = max_width
                         else:
-                            # No text content - allow larger images but still cap at 800px
-                            if width_px > 800:
-                                width_px = 800
+                            if width_px > 800: width_px = 800
                         
-                        # Detect horizontal position on slide (for floating)
                         slide_width = prs.slide_width if hasattr(prs, 'slide_width') else 9144000
                         shape_left = shape.left if hasattr(shape, 'left') else 0
                         shape_center_x = shape_left + (shape.width / 2) if hasattr(shape, 'width') else 0
                         
-                        # Alignment detection
-                        # If image is in the middle 20%, don't float, just center
                         center_threshold = slide_width * 0.1
                         dist_from_center = abs(shape_center_x - (slide_width / 2))
                         
                         if dist_from_center < center_threshold:
                             float_style = "display: block; margin: 20px auto;"
                         elif shape_center_x < slide_width / 2:
-                            # Left side
                             float_style = "float: left; margin: 0 20px 15px 0;"
                         else:
-                            # Right side
                             float_style = "float: right; margin: 0 0 15px 20px;"
                         
-                        html_parts.append(f'<img src="{rel_path}" alt="[FIX_ME] Image from Slide {slide_num}" width="{width_px}" class="slide-image" style="{float_style}">')
+                        # [NEW] Enhanced Image Styles (Borders/Rotation)
+                        extra_img_style = get_image_styles(shape)
+                        final_img_style = f"{float_style} {extra_img_style}".strip()
+                        
+                        # [SMART FIX] Silent Memory and prompt
+                        alt_text = "" # Default to decorative/empty if skipped
+                        if io_handler:
+                            import interactive_fixer
+                            mem_key = interactive_fixer.normalize_image_key(rel_path, image_full_path)
+                            
+                            if mem_key in io_handler.memory:
+                                alt_text = io_handler.memory[mem_key]
+                            else:
+                                slide_title = slide.shapes.title.text_frame.text if slide.shapes.title else f"Slide {slide_num}"
+                                choice = io_handler.prompt_image(f"   > Alt Text for Slide {slide_num} image (or Enter to skip): ", image_full_path, context=f"Context: {slide_title}").strip()
+                                if choice:
+                                    if choice == "__DECORATIVE__":
+                                        alt_text = ""
+                                    else:
+                                        alt_text = choice
+                                    io_handler.memory[mem_key] = alt_text
+                                    io_handler.save_memory()
+
+                        html_parts.append(f'<img src="{rel_path}" alt="{alt_text}" width="{width_px}" class="slide-image" style="{final_img_style}">')
                     except Exception as img_err:
                         print(f"Skipped image on slide {slide_num}: {img_err}")
+
+            # [NEW] Capture Speaker Notes (Essential context often missed)
+            try:
+                if slide.has_notes_slide:
+                    notes_text = slide.notes_slide.notes_text_frame.text.strip()
+                    if notes_text:
+                        html_parts.append('<div class="speaker-notes" style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-left: 4px solid #4b3190; font-style: italic;">')
+                        notes_html = notes_text.replace("\n", "<br>")
+                        html_parts.append(f'<strong>Speaker Notes:</strong><br>{notes_html}')
+                        html_parts.append('</div>')
+            except: pass
 
             html_parts.append('</div>')
 
@@ -488,14 +891,14 @@ def convert_ppt_to_html(ppt_path):
         s_filename = sanitize_filename(filename)
         output_path = os.path.join(output_dir, f"{s_filename}.html")
         
-        _save_html(full_content, filename, ppt_path, output_path)
+        _save_html(full_content, filename, ppt_path, output_path, style_overrides=style_overrides)
         return output_path, None
 
     except Exception as e:
         return None, str(e)
 
 
-def convert_pdf_to_html(pdf_path):
+def convert_pdf_to_html(pdf_path, io_handler=None):
     """Converts PDF to HTML using PyMuPDF (Images + Text)."""
     if not fitz:
         if not extract_text:
@@ -512,10 +915,11 @@ def convert_pdf_to_html(pdf_path):
         html_parts = []
         html_parts.append('<div class="pdf-content">')
         
+        total_text_blocks = 0
         for i, page in enumerate(doc):
             page_num = i + 1
             html_parts.append(f'<div class="page-container" id="page-{page_num}" style="margin-bottom: 30px; border-bottom: 1px solid #ccc; padding-bottom: 20px;">')
-            html_parts.append(f'<p class="note">Page {page_num}</p>')
+            html_parts.append(f'<p class="note" style="font-size: 0.8em; color: #666; font-weight: bold;">Page {page_num}</p>')
             
             # [IMPROVED] Extract tables FIRST to know their positions
             table_regions = []
@@ -649,12 +1053,31 @@ def convert_pdf_to_html(pdf_path):
                             f.write(image_bytes)
                             
                         rel_path = f"web_resources/{safe_filename}/{image_filename}"
-                        html_parts.append(f'\u003cimg src="{rel_path}" alt="" width="{width_attr}" class="content-image" style="{float_style}"\u003e')
+                        
+                        # [INTERACTIVE] Prompt for Alt Text
+                        alt_text = f"Image from Page {page_num}"
+                        if io_handler:
+                            import interactive_fixer
+                            mem_key = interactive_fixer.normalize_image_key(rel_path, image_full_path)
+                            if mem_key in io_handler.memory:
+                                alt_text = io_handler.memory[mem_key]
+                            else:
+                                choice = io_handler.prompt_image(f"   > Alt Text for Page {page_num} image (or Enter to skip): ", image_full_path, context=f"Context: PDF Page {page_num}").strip()
+                                if choice:
+                                    if choice == "__DECORATIVE__":
+                                        alt_text = ""
+                                    else:
+                                        alt_text = choice
+                                    io_handler.memory[mem_key] = alt_text
+                                    io_handler.save_memory()
+
+                        html_parts.append(f'\u003cimg src="{rel_path}" alt="{alt_text}" width="{width_attr}" class="content-image" style="{float_style}"\u003e')
                     except Exception as e:
                         print(f"Skipped PDF image: {e}")
 
                 # Type 0 = Text
                 elif block['type'] == 0:
+                     total_text_blocks += 1
                      # [IMPROVED] Aggregate all text in this block first, then intelligently group
                      block_lines = []
                      
@@ -734,6 +1157,42 @@ def convert_pdf_to_html(pdf_path):
                          
                          html_parts.append(f"<p>{' '.join(paragraph_lines)}</p>")
             
+            # [NEW] Fallback Image Extraction (Catch missed XObjects)
+            try:
+                img_list = page.get_images(full=True)
+                # Filter out images already found in the dict block loop
+                # (Simple heuristic: check if we've already saved images for this page in rel_path)
+                found_count = len([p for p in html_parts if "web_resources" in p and f"page{page_num}_img" in p])
+                
+                if len(img_list) > found_count:
+                    self.gui_handler.log(f"   [PDF] Pass 2: Found {len(img_list) - found_count} additional images...")
+                    for img_index, img in enumerate(img_list):
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        ext = base_image["ext"]
+                        
+                        # Use a unique name for fallback images
+                        fallback_name = f"page{page_num}_fallback_{xref}.{ext}"
+                        fallback_path = os.path.join(res_dir, fallback_name)
+                        
+                        if not os.path.exists(fallback_path):
+                            with open(fallback_path, "wb") as f:
+                                f.write(image_bytes)
+                                
+                            rel_path = f"web_resources/{safe_filename}/{fallback_name}"
+                            alt_text = f"Fallback Image from Page {page_num}"
+                            
+                            # Prompt for alt text if possible
+                            if io_handler:
+                                choice = io_handler.prompt_image(f"   > Missing Alt Text for PDF image on Page {page_num} (from fallback): ", fallback_path, context=f"Context: PDF Page {page_num}").strip()
+                                if choice:
+                                    alt_text = choice if choice != "__DECORATIVE__" else ""
+
+                            html_parts.append(f'\u003cimg src="{rel_path}" alt="{alt_text}" class="content-image" style="display: block; margin: 20px auto; max-width: 800px;"\u003e')
+            except Exception as e:
+                print(f"Fallback PDF image extraction failed: {e}")
+
             # Insert any remaining tables that weren't positioned
             for tr in table_regions:
                 if id(tr) not in inserted_tables:
@@ -749,6 +1208,21 @@ def convert_pdf_to_html(pdf_path):
 
         html_parts.append('</div>')
         
+        # [SCAN DETECTION] If total text blocks is very low relative to total pages, it's a scan.
+        avg_text_per_page = total_text_blocks / len(doc) if len(doc) > 0 else 0
+        if avg_text_per_page < 0.5: # Heuristic: less than 1 text block per 2 pages
+             scan_warning = (
+                 '<div class="note" style="background-color: #fee2e2; border: 2px solid #ef4444; color: #991b1b; padding: 20px; border-radius: 8px; margin-bottom: 25px;">'
+                 '<strong>⚠️ ACCESSIBILITY WARNING: POTENTIAL SCANNED IMAGE</strong><br>'
+                 'This PDF appears to be a scanned image of a document rather than a text-based file. '
+                 'Screen readers will NOT be able to read this content. We have extracted images of the pages, '
+                 'but we strongly recommend finding a text-based version or using an OCR tool (like Adobe Acrobat Pro or Microsoft Lens) '
+                 'before converting to HTML.'
+                 '</div>'
+             )
+             html_parts.insert(1, scan_warning)
+             print(f"    [WARNING] PDF '{filename}' appears to be a scanned image (text blocks: {total_text_blocks}, pages: {len(doc)}).")
+
         full_content = "\n".join(html_parts)
         
         # Logging
@@ -792,22 +1266,28 @@ def _convert_pdf_fallback(pdf_path):
 
 
 def update_links_in_directory(directory, old_filename, new_filename):
-
     """
-    Scans all HTML files in directory and replaces links.
-    e.g. href="syllabus.docx" -> href="syllabus.html"
+    Scans all HTML files in directory and replaces links using BeautifulSoup.
+    e.g. <a href="syllabus.docx">Click Here</a> -> <a href="syllabus.html">Syllabus</a>
+    Replaces underscores with spaces in link text.
     """
     count = 0
     old_base = os.path.basename(old_filename)
     new_base = os.path.basename(new_filename)
     
-    # [CANVAS FIX] Remove extension for the NEW link as requested
-    # e.g. "syllabus.docx" -> "syllabus" (instead of "syllabus.html")
-    new_base_no_ext = os.path.splitext(new_base)[0]
-    
-    # URL encode spaces
+    # URL encoded version for comparison
     old_base_enc = old_base.replace(' ', '%20')
-    new_base_no_ext_enc = new_base_no_ext.replace(' ', '%20')
+    
+    # Generate new link text: replace underscores with spaces
+    # e.g. Object_Oriented.html -> Object Oriented
+    link_text_base = os.path.splitext(new_base)[0]
+    new_link_text = link_text_base.replace('_', ' ').strip()
+    
+    # Handle live URLs vs local files
+    if new_filename.startswith('http'):
+        new_href = new_filename
+    else:
+        new_href = new_base.replace(' ', '%20')
 
     for root, dirs, files in os.walk(directory):
         for file in files:
@@ -815,20 +1295,36 @@ def update_links_in_directory(directory, old_filename, new_filename):
                 filepath = os.path.join(root, file)
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
-                        content = f.read()
+                        soup = BeautifulSoup(f.read(), 'html.parser')
                     
-                    if old_base in content or old_base_enc in content:
-                        # Replace with the extensionless version
-                        new_content = content.replace(old_base, new_base_no_ext)
-                        new_content = new_content.replace(old_base_enc, new_base_no_ext_enc)
+                    modified = False
+                    # 1. Update Links (<a> tags)
+                    for a in soup.find_all('a', href=True):
+                        href = a['href']
+                        # Standardize href for comparison
+                        clean_href = urllib.parse.unquote(href).replace('\\', '/')
                         
-                        if new_content != content:
-                            with open(filepath, 'w', encoding='utf-8') as f:
-                                f.write(new_content)
-                            count += 1
-                except:
-                    pass
+                        if clean_href.endswith(old_base.replace('\\', '/')) or href == old_base_enc:
+                            a['href'] = new_href
+                            # Update link text automatically per user request
+                            a.string = new_link_text
+                            modified = True
+                    
+                    # 2. Update Images (<img> tags)
+                    for img in soup.find_all('img', src=True):
+                        src = img['src']
+                        if src == old_base or src == old_base_enc:
+                            img['src'] = new_href
+                            modified = True
+
+                    if modified:
+                        with open(filepath, 'w', encoding='utf-8') as f:
+                            f.write(str(soup))
+                        count += 1
+                except Exception as e:
+                    print(f"Error updating links in {file}: {e}")
     return count
+
 
 
 def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=None):
@@ -913,6 +1409,7 @@ def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=N
         log_func(f"  [Link Update] Updated {count} file(s)")
     
     return count
+
 
 def unzip_course_package(zip_path, extract_to, log_func=None):
     """
@@ -1057,9 +1554,44 @@ def update_manifest_resource(root_dir, old_rel_path, new_rel_path):
         if replacements > 0:
             with open(manifest_path, 'w', encoding='utf-8') as f:
                 f.write(new_content)
-            return True, f"Updated {replacements} references in imsmanifest.xml"
+            return True, f"Manifest Updated: {replacements} resource(s) synchronized."
         
-        return False, "No references found in imsmanifest.xml"
+        return False, "No matching entries found in imsmanifest.xml."
     except Exception as e:
         return False, f"Manifest update error: {str(e)}"
+
+def run_janitor_cleanup(source_dir, log_func=None):
+    """
+    Scans the course for original source files (Word, PPT, PDF) that have been converted.
+    Moves them to the archive folder to keep the Canvas course clean.
+    """
+    if log_func: log_func("🧹 Janitor: Tidying up original files...")
+    
+    extensions_to_clean = ['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls', '.pdf']
+    cleaned_count = 0
+    
+    for root, dirs, files in os.walk(source_dir):
+        # Don't clean files already in the archive or hidden folders
+        if ARCHIVE_FOLDER_NAME in root or '.git' in root:
+            continue
+            
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in extensions_to_clean:
+                # [SAFETY FIX] Only archive if a converted version actually exists!
+                # This prevents deleting files that the user chose NOT to convert.
+                file_path = os.path.join(root, file)
+                base_name = os.path.splitext(file)[0]
+                html_version = os.path.join(root, base_name + ".html")
+                
+                if os.path.exists(html_version):
+                    new_path = archive_source_file(file_path)
+                    if new_path:
+                        cleaned_count += 1
+                else:
+                    # Keep it in the course if not converted
+                    pass
+                    
+    if log_func: log_func(f"🧹 Janitor: archived {cleaned_count} source files. (Safe for upload!)")
+    return cleaned_count
 

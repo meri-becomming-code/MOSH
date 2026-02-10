@@ -2,6 +2,15 @@
 
 ## Latest Updates (February 6, 2026)
 
+## 🚀 New Features
+- **✨ Full Automation**: The toolkit now **automatically** removes all red `[ADA FIX]` labels and `[FIX_ME]` tags at the end of the Auto-Fix and Batch conversion processes. No manual cleanup button required!
+- **📸 Smart Image Alignment**: 
+    - **Word & PDF**: Images now retain their natural sizing and positioning using CSS floats.
+    - **PowerPoint**: Enhanced alignment detection (left, right, or center) ensuring lecture notes follow the original slide layout.
+- **🛠️ Table Structure Sanitizer**: Automatically fixes "Invalid Table Structure" errors in Canvas by cleaning up out-of-order tags and empty content.
+- **🧠 Jeanie Magic (AI-LaTeX Conversion)**: Integrated Gemini AI to automatically generate LaTeX code from math equations in images. Just add your free API key in settings and type `MAGIC` during guided review.
+- **🔄 Sync-on-Convert**: Individual conversion buttons (Word, PPT, PDF) now automatically synchronize with the `imsmanifest.xml` for seamless Canvas imports.
+
 ### 🎯 PDF to HTML Conversion - Major Improvements
 
 **Problem Solved:** PDF conversions were creating fragmented output with each text span becoming a separate paragraph, making content difficult to read and causing accessibility issues.
