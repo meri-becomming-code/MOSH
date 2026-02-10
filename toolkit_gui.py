@@ -1047,6 +1047,14 @@ YOUR WORKFLOW:
                     output_path, err = converter_utils.convert_excel_to_html(fpath)
                 elif ext == "pptx":
                      output_path, err = converter_utils.convert_ppt_to_html(fpath)
+                     # Update links to PowerPoint file
+                     if output_path:
+                         converter_utils.update_pptx_links_to_html(
+                             self.target_dir,
+                             os.path.basename(fpath),
+                             os.path.basename(output_path),
+                             log_func=self.gui_handler.log
+                         )
                 elif ext == "pdf":
                      output_path, err = converter_utils.convert_pdf_to_html(fpath)
                 
@@ -1146,6 +1154,14 @@ YOUR WORKFLOW:
                 output_path, err = converter_utils.convert_excel_to_html(file_path)
             elif ext == "pptx":
                 output_path, err = converter_utils.convert_ppt_to_html(file_path)
+                # Update links to PowerPoint file
+                if output_path:
+                    converter_utils.update_pptx_links_to_html(
+                        self.target_dir,
+                        os.path.basename(file_path),
+                        os.path.basename(output_path),
+                        log_func=self.gui_handler.log
+                    )
             elif ext == "pdf":
                 output_path, err = converter_utils.convert_pdf_to_html(file_path)
             
@@ -1255,6 +1271,14 @@ YOUR WORKFLOW:
                     output_path, err = converter_utils.convert_excel_to_html(fpath)
                 elif ext == "pptx":
                     output_path, err = converter_utils.convert_ppt_to_html(fpath)
+                    # Update links to PowerPoint file
+                    if output_path:
+                        converter_utils.update_pptx_links_to_html(
+                            self.target_dir,
+                            os.path.basename(fpath),
+                            os.path.basename(output_path),
+                            log_func=self.gui_handler.log
+                        )
                 elif ext == "pdf":
                     output_path, err = converter_utils.convert_pdf_to_html(fpath)
                 

@@ -439,8 +439,9 @@ def convert_ppt_to_html(ppt_path):
                         with open(image_full_path, 'wb') as img_f:
                             img_f.write(image_bytes)
                             
-                        # Embed in HTML with Standard Relative Path
-                        rel_path = f"web_resources/{safe_filename}/{image_filename}"
+                        # Use Canvas-compatible path with $IMS-CC-FILEBASE$ token
+                        # This works regardless of where the HTML file is located in the package
+                        rel_path = f"$IMS-CC-FILEBASE$/web_resources/{safe_filename}/{image_filename}"
                         
                         # [ENHANCED] Calculate dimensions and position for floating
                         # PPTX uses EMUs (English Metric Units). 1 inch = 914400 EMUs. 
@@ -827,6 +828,90 @@ def update_links_in_directory(directory, old_filename, new_filename):
                             count += 1
                 except:
                     pass
+    return count
+
+
+def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=None):
+    """
+    Updates all HTML files to replace links to .pptx files with links to .html files.
+    Handles Canvas-style links with $IMS-CC-FILEBASE$ tokens and data-api-endpoint attributes.
+    Makes link text human-readable by replacing underscores with spaces.
+    
+    Args:
+        root_dir: Root directory to scan
+        pptx_filename: Original PowerPoint filename (e.g., "PE_1_4-5_Creating_Functions.pptx")
+        html_filename: New HTML filename (e.g., "PE_1_4-5_Creating_Functions.html")
+        log_func: Optional logging function
+    
+    Returns:
+        Number of files updated
+    """
+    if log_func:
+        log_func(f"  [Link Update] {pptx_filename} -> {html_filename}")
+    
+    # Get base names without extensions
+    pptx_base = os.path.splitext(pptx_filename)[0]
+    html_base = os.path.splitext(html_filename)[0]
+    
+    # URL-encoded versions (Canvas uses %20 for spaces)
+    pptx_encoded = pptx_base.replace(" ", "%20")
+    html_encoded = html_base.replace(" ", "%20")
+    
+    count = 0
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            if not file.endswith('.html'):
+                continue
+            
+            filepath = os.path.join(root, file)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                modified = False
+                
+                # Pattern 1: href with $IMS-CC-FILEBASE$ token
+                # Replace: href="$IMS-CC-FILEBASE$/.../filename.pptx..."
+                # With:    href="$IMS-CC-FILEBASE$/.../filename.html..."
+                pattern1 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_base)}([^"]*)"'
+                if re.search(pattern1, content):
+                    content = re.sub(pattern1, rf'href="\1{html_base}\2"', content)
+                    modified = True
+                
+                # Pattern 2: URL-encoded version
+                pattern2 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_encoded)}([^"]*)"'
+                if re.search(pattern2, content):
+                    content = re.sub(pattern2, rf'href="\1{html_encoded}\2"', content)
+                    modified = True
+                
+                # Pattern 3: title attributes
+                pattern3 = rf'title="{re.escape(pptx_base)}"'
+                if re.search(pattern3, content):
+                    content = re.sub(pattern3, f'title="{html_base}"', content)
+                    modified = True
+                
+                # Pattern 4: Link text ending with (PPTX) - make human-readable
+                # Replace: >PE_1_4-5_Creating_Functions (PPTX)</a>
+                # With:    >PE 1 4-5 Creating Functions (HTML)</a>
+                pattern4 = rf'>([^<]*){re.escape(pptx_base)}([^<]*)\(PPTX\)</a>'
+                if re.search(pattern4, content):
+                    # Make the link text human-readable by replacing underscores with spaces
+                    readable_name = html_base.replace('_', ' ')
+                    content = re.sub(pattern4, rf'>\1{readable_name}\2(HTML)</a>', content)
+                    modified = True
+                
+                if modified:
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    count += 1
+                    
+            except Exception as e:
+                if log_func:
+                    log_func(f"  [Warning] Could not update {file}: {e}")
+    
+    if log_func:
+        log_func(f"  [Link Update] Updated {count} file(s)")
+    
     return count
 
 def unzip_course_package(zip_path, extract_to, log_func=None):
