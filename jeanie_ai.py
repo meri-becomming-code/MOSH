@@ -2,6 +2,47 @@ import requests
 import base64
 import os
 
+def validate_api_key(api_key):
+    """
+    Sends a minimal request to Gemini to check if the key is valid.
+    Returns: (is_valid, message)
+    """
+    if not api_key:
+        return False, "No API Key provided."
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    headers = {
+        "Content-Type": "application/json"
+    }
+    
+    # Simple text prompt
+    payload = {
+        "contents": [{
+            "parts": [{"text": "Hello"}]
+        }],
+        "generationConfig": {
+            "maxOutputTokens": 5,
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            return True, "Success! Key is valid."
+        else:
+            # Parse error message
+            try:
+                err_json = response.json()
+                msg = err_json.get('error', {}).get('message', response.text)
+                return False, f"API Error: {msg}"
+            except:
+                return False, f"API Error ({response.status_code}): {response.text}"
+
+    except Exception as e:
+        return False, f"Connection Failed: {str(e)}"
+
 def generate_latex_from_image(image_path, api_key):
     """
     Uses Gemini 1.5 Flash to convert an image of a math equation into LaTeX.

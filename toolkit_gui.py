@@ -365,6 +365,7 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         ent_api.insert(0, self.config.get("api_key", ""))
         ent_api.pack(pady=5, padx=40)
         
+        
         def open_api_help():
             webbrowser.open("https://aistudio.google.com/app/apikey")
             msg_steps = (
@@ -380,7 +381,30 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
             )
             messagebox.showinfo("MOSH Magic Help", msg_steps)
             
-        tk.Button(dialog, text="✨ Enable MOSH Magic (Get Free Math Help Key)", command=open_api_help, font=("Segoe UI", 9, "bold"), fg="#0369A1", bg="#F0F9FF").pack(anchor="w", padx=40)
+        def test_api_key():
+            key = ent_api.get().strip()
+            if not key:
+                messagebox.showwarning("No Key", "Please paste a key first.")
+                return
+            
+            lbl_status.config(text="⏳ Testing Key...", fg="blue")
+            self.root.update()
+            
+            import jeanie_ai
+            is_valid, msg = jeanie_ai.validate_api_key(key)
+            
+            if is_valid:
+                lbl_status.config(text="✅ SUCCESS: Key is valid!", fg="green")
+                messagebox.showinfo("Success", "Your API Key is working perfectly!\n\nMOSH Magic is ready to go.")
+            else:
+                lbl_status.config(text="❌ INVALID: See message below.", fg="red")
+                messagebox.showerror("Key Error", f"The API Key did not work.\n\nError from Google:\n{msg}\n\nTips:\n- Make sure you copied the whole key.\n- Ensure the 'MOSH' project is enabled in Google AI Studio.")
+
+        btn_api_frame = tk.Frame(dialog, bg=colors["bg"])
+        btn_api_frame.pack(anchor="w", padx=40)
+        
+        tk.Button(btn_api_frame, text="✨ Get Free Key", command=open_api_help, font=("Segoe UI", 9), fg="#0369A1", bg="#F0F9FF").pack(side="left", padx=(0, 10))
+        tk.Button(btn_api_frame, text="🧪 Test This Key", command=test_api_key, font=("Segoe UI", 9, "bold")).pack(side="left")
 
         def open_course_help():
             messagebox.showinfo("Finding Your Course ID", 
