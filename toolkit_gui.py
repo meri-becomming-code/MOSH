@@ -65,10 +65,10 @@ class ThreadSafeGuiHandler(interactive_fixer.FixerIO):
         self.input_request_queue.put(('confirm', message, None))
         return self.input_response_queue.get()
         
-    def prompt_image(self, message, image_path, context=None):
+    def prompt_image(self, message, image_path, context=None, suggestion=None):
         """Ask user for input while showing an image and context."""
         if self.is_stopped(): return ""
-        self.input_request_queue.put(('prompt_image', message, (image_path, context)))
+        self.input_request_queue.put(('prompt_image', message, (image_path, context, suggestion)))
         return self.input_response_queue.get()
 
     def prompt_link(self, message, help_url, context=None):
@@ -110,7 +110,8 @@ class ToolkitGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("MOSH's Toolkit: Making Online Spaces Helpful")
-        self.root.geometry("1150x850") # Wider and longer to prevent cutoff
+        self.root.geometry("900x650") # Slightly wider for sidebar
+        self.root.minsize(900, 600) # [FIX] prevent cutting off buttons
 
         # --- State ---
         self.target_dir = os.getcwd() # Default
@@ -315,14 +316,15 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         """Dialog to configure Canvas API settings (Barney Style)."""
         dialog = Toplevel(self.root)
         dialog.title("Setup Your Canvas Sandbox")
-        dialog.geometry("550x550")
+        dialog.geometry("550x650") # [FIX] Increased height
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.resizable(True, True) # [FIX] Allow resizing
 
         colors = THEMES[self.config.get("theme", "light")]
         dialog.configure(bg=colors["bg"])
 
-        tk.Label(dialog, text="Step 0: Connect to your Playground", font=("Segoe UI", 16, "bold"), 
+        tk.Label(dialog, text="Step 0: Connect to your Sandbox", font=("Segoe UI", 16, "bold"), 
                  bg=colors["bg"], fg=colors["header"]).pack(pady=15)
         
         tk.Label(dialog, text="This tool creates Pages in a 'Sandbox' or 'Playground' course so you can test them safely.", 
@@ -363,6 +365,7 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         ent_api.insert(0, self.config.get("api_key", ""))
         ent_api.pack(pady=5, padx=40)
         
+        
         def open_api_help():
             webbrowser.open("https://aistudio.google.com/app/apikey")
             msg_steps = (
@@ -378,7 +381,30 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
             )
             messagebox.showinfo("MOSH Magic Help", msg_steps)
             
-        tk.Button(dialog, text="✨ Enable MOSH Magic (Get Free Math Help Key)", command=open_api_help, font=("Segoe UI", 9, "bold"), fg="#0369A1", bg="#F0F9FF").pack(anchor="w", padx=40)
+        def test_api_key():
+            key = ent_api.get().strip()
+            if not key:
+                messagebox.showwarning("No Key", "Please paste a key first.")
+                return
+            
+            lbl_status.config(text="⏳ Testing Key...", fg="blue")
+            self.root.update()
+            
+            import jeanie_ai
+            is_valid, msg = jeanie_ai.validate_api_key(key)
+            
+            if is_valid:
+                lbl_status.config(text="✅ SUCCESS: Key is valid!", fg="green")
+                messagebox.showinfo("Success", "Your API Key is working perfectly!\n\nMOSH Magic is ready to go.")
+            else:
+                lbl_status.config(text="❌ INVALID: See message below.", fg="red")
+                messagebox.showerror("Key Error", f"The API Key did not work.\n\nError from Google:\n{msg}\n\nTips:\n- Make sure you copied the whole key.\n- Ensure the 'MOSH' project is enabled in Google AI Studio.")
+
+        btn_api_frame = tk.Frame(dialog, bg=colors["bg"])
+        btn_api_frame.pack(anchor="w", padx=40)
+        
+        tk.Button(btn_api_frame, text="✨ Get Free Key", command=open_api_help, font=("Segoe UI", 9), fg="#0369A1", bg="#F0F9FF").pack(side="left", padx=(0, 10))
+        tk.Button(btn_api_frame, text="🧪 Test This Key", command=test_api_key, font=("Segoe UI", 9, "bold")).pack(side="left")
 
         def open_course_help():
             messagebox.showinfo("Finding Your Course ID", 
@@ -624,8 +650,8 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
 
         # -- Logs --
         ttk.Label(content, text="Activity Log", style="SubHeader.TLabel").pack(anchor="w", pady=(10, 0))
-        self.txt_log = scrolledtext.ScrolledText(content, height=12, state='disabled', font=("Consolas", 9), relief="flat", borderwidth=1)
-        self.txt_log.pack(fill="both", expand=True, pady=10)
+        self.txt_log = scrolledtext.ScrolledText(content, height=8, state='disabled', font=("Consolas", 9), relief="flat", borderwidth=1)
+        self.txt_log.pack(fill="both", expand=True, pady=5)
 
     def _browse_folder(self):
         path = filedialog.askdirectory(initialdir=self.target_dir)
@@ -746,8 +772,8 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
                 elif kind == 'confirm':
                     response = messagebox.askyesno("Confirm", message, parent=self.root)
                 elif kind == 'prompt_image':
-                    path, context = payload
-                    response = self._show_image_dialog(message, path, context)
+                    path, context, suggestion = payload
+                    response = self._show_image_dialog(message, path, context, suggestion)
                 elif kind == 'prompt_link':
                     href, context = payload
                     response = self._show_link_dialog(message, href, context)
@@ -757,11 +783,11 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
             pass
         self.root.after(100, self._process_inputs)
         
-    def _show_image_dialog(self, message, image_path, context=None):
+    def _show_image_dialog(self, message, image_path, context=None, suggestion=None):
         """Custom dialog to show an image and prompt for alt text."""
         dialog = Toplevel(self.root)
         dialog.title("Image Review")
-        dialog.geometry("850x900") 
+        dialog.geometry("700x650") 
         dialog.transient(self.root)
         dialog.grab_set()
         
@@ -775,12 +801,15 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         if context:
             ctx_frame = ttk.LabelFrame(dialog, text="Surrounding Text Context", padding=5)
             ctx_frame.pack(fill="x", padx=10, pady=5)
-            tk.Label(ctx_frame, text=context, wraplength=550, font=("Segoe UI", 9, "italic"), justify="left").pack()
+            tk.Label(ctx_frame, text=context, wraplength=650, font=("Segoe UI", 9, "italic"), justify="left").pack()
         
-        # Load and resize image
+        # Load and verify image
         try:
             pil_img = Image.open(image_path)
-            pil_img.thumbnail((500, 350)) 
+            # Resize logic to fit
+            w, h = pil_img.size
+            if w > 400 or h > 300:
+                pil_img.thumbnail((400, 300))
             tk_img = ImageTk.PhotoImage(pil_img)
             
             lbl_img = tk.Label(dialog, image=tk_img)
@@ -791,21 +820,31 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         
         fname = os.path.basename(image_path)
         tk.Label(dialog, text=f"File: {fname}", font=("Segoe UI", 9, "bold")).pack()
-        tk.Label(dialog, text=message, wraplength=550, font=("Segoe UI", 10)).pack(pady=5)
+
+        # Instructions
+        tk.Label(dialog, text="Review or Edit Alt Text:", font=("Segoe UI", 10, "bold")).pack(pady=(15, 5))
         
-        # Input Area
+        # Input Area (Pre-filled with suggestion)
         entry_var = tk.StringVar()
-        entry = tk.Entry(dialog, textvariable=entry_var, width=60)
+        if suggestion:
+            entry_var.set(suggestion) # [FIX] Pre-fill the box!
+            tk.Label(dialog, text="✨ AI Suggestion added. Edit or press Enter to accept.", fg="#4B3190", bg="#F5F3ED").pack()
+
+        entry = tk.Entry(dialog, textvariable=entry_var, width=70, font=("Segoe UI", 11))
         entry.pack(pady=5)
         entry.focus_set()
+        entry.select_range(0, tk.END) # Select all so they can easily type over if they want
         
-        lbl_status = tk.Label(dialog, text="", fg="blue", font=("Segoe UI", 9, "italic"))
-        lbl_status.pack(pady=2)
-
         result = {"text": ""}
+
         def on_ok(event=None):
-            result["text"] = entry_var.get()
+            result["text"] = entry_var.get().strip()
             dialog.destroy()
+
+        def on_clear():
+             entry_var.set("")
+             entry.focus_set()
+            
         def on_skip():
             result["text"] = "" 
             dialog.destroy()
@@ -814,41 +853,14 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
             result["text"] = "__DECORATIVE__"
             dialog.destroy()
             
-        def on_magic():
-            if self.gui_handler.api_key:
-                lbl_status.config(text="🪄 Consulting MOSH Magic...", fg="purple")
-                dialog.update()
-                import jeanie_ai
-                
-                # Check if it's a math equation or standard image
-                # (We can check the message or context for hints, or just try alt-text)
-                if "[JEANIE MAGIC]" in message or "Math" in message:
-                    ai_text, msg = jeanie_ai.generate_latex_from_image(image_path, self.gui_handler.api_key)
-                else:
-                    ai_text, msg = jeanie_ai.generate_alt_text_from_image(image_path, self.gui_handler.api_key, context=context)
-                
-                if ai_text:
-                    entry_var.set(ai_text)
-                    lbl_status.config(text="✅ Done! Review and click 'Update'", fg="green")
-                else:
-                    lbl_status.config(text=f"❌ Error: {msg}", fg="red")
-            else:
-                messagebox.showwarning("AI Disabled", "MOSH Magic requires a Gemini API Key.\n\nSet it in 'Step 1: Select .imscc File' -> 'Enable MOSH Magic'")
-
-        # Magic Button Frame (Top/Center)
-        magic_frame = tk.Frame(dialog)
-        magic_frame.pack(pady=(10, 5))
-        
-        tk.Button(magic_frame, text="🪄 CONSULT MOSH MAGIC (AI)", command=on_magic, 
-                  bg="#E3F2FD", fg="#0D47A1", font=("Segoe UI", 12, "bold"), 
-                  padx=20, pady=10).pack()
-
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(pady=15)
         
-        tk.Button(btn_frame, text="✅ Update Alt Text", command=on_ok, bg="#dcedc8", width=18, font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="🎨 Mark Decorative", command=on_decorate, bg="#fff9c4", width=18).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="⏭️ Skip / Ignore", command=on_skip, width=15).pack(side="left", padx=5)
+        # Buttons
+        tk.Button(btn_frame, text="✅ Save / Next (Enter)", command=on_ok, bg="#dcedc8", font=("bold"), width=20).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Clear Text", command=on_clear, width=15).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Mark Decorative", command=on_decorate, bg="#fff9c4", width=15).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Skip / Ignore", command=on_skip, width=15).pack(side="left", padx=5)
         
         dialog.bind('<Return>', on_ok)
         self.root.wait_window(dialog)
@@ -858,7 +870,7 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         """Custom dialog to show link details and prompt for text."""
         dialog = Toplevel(self.root)
         dialog.title("Link Review")
-        dialog.geometry("750x550")
+        dialog.geometry("550x400")
         dialog.transient(self.root)
         dialog.grab_set()
         
@@ -928,7 +940,7 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         share_text = ("Hi team,\n\n"
                      "I found a great free tool called the MOSH ADA Toolkit that automatically "
                      "remediates Canvas pages. It fixes headings, tables, and contrast issues in seconds. "
-                     "It even has an AI co-pilot called 'MOSH Magic' that writes Math LaTeX and "
+                     "It even has an AI co-pilot called 'Jeanie Magic' that writes Math LaTeX and "
                      "image descriptions for you! This makes the April 2026 deadline much easier.\n\n"
                      "It was built by a fellow educator and it's completely free. "
                      "Worth checking out to save hours of manual labor!\n\n"
@@ -1227,7 +1239,7 @@ YOUR WORKFLOW:
         # 2. Show Dialog
         dialog = Toplevel(self.root)
         dialog.title("Interactive Conversion Wizard")
-        dialog.geometry("800x750")
+        dialog.geometry("600x600")
         dialog.lift()
         dialog.focus_force()
         dialog.grab_set()
@@ -1314,6 +1326,14 @@ YOUR WORKFLOW:
                     output_path, err = converter_utils.convert_excel_to_html(fpath)
                 elif ext == "pptx":
                      output_path, err = converter_utils.convert_ppt_to_html(fpath, self.gui_handler)
+                     # Update links to PowerPoint file
+                     if output_path:
+                         converter_utils.update_pptx_links_to_html(
+                             self.target_dir,
+                             os.path.basename(fpath),
+                             os.path.basename(output_path),
+                             log_func=self.gui_handler.log
+                         )
                 elif ext == "pdf":
                      output_path, err = converter_utils.convert_pdf_to_html(fpath, self.gui_handler)
                 
@@ -1397,6 +1417,14 @@ YOUR WORKFLOW:
                 output_path, err = converter_utils.convert_excel_to_html(file_path)
             elif ext == "pptx":
                 output_path, err = converter_utils.convert_ppt_to_html(file_path, self.gui_handler)
+                # Update links to PowerPoint file
+                if output_path:
+                    converter_utils.update_pptx_links_to_html(
+                        self.target_dir,
+                        os.path.basename(file_path),
+                        os.path.basename(output_path),
+                        log_func=self.gui_handler.log
+                    )
             elif ext == "pdf":
                 output_path, err = converter_utils.convert_pdf_to_html(file_path, self.gui_handler)
             
@@ -1635,6 +1663,14 @@ YOUR WORKFLOW:
                     output_path, err = converter_utils.convert_excel_to_html(fpath)
                 elif ext == "pptx":
                     output_path, err = converter_utils.convert_ppt_to_html(fpath, self.gui_handler)
+                    # Update links to PowerPoint file
+                    if output_path:
+                        converter_utils.update_pptx_links_to_html(
+                            self.target_dir,
+                            os.path.basename(fpath),
+                            os.path.basename(output_path),
+                            log_func=self.gui_handler.log
+                        )
                 elif ext == "pdf":
                     output_path, err = converter_utils.convert_pdf_to_html(fpath, self.gui_handler)
                 
@@ -1709,7 +1745,7 @@ YOUR WORKFLOW:
         """Displays a simple dashboard checking course readiness."""
         dialog = Toplevel(self.root)
         dialog.title("🚦 Pre-Flight Check")
-        dialog.geometry("550x500")
+        dialog.geometry("550x650")
         dialog.transient(self.root)
         
         ttk.Label(dialog, text="🚦 Pre-Flight Check", style="Header.TLabel").pack(pady=10)
@@ -1757,8 +1793,13 @@ YOUR WORKFLOW:
 
         # [NEW] Push Button NOW ALWAYS AVAILABLE
         btn_push = ttk.Button(score_frame, text=push_text, 
-                             command=lambda: [dialog.destroy(), self._push_to_canvas()], style="Action.TButton")
+                              command=lambda: [dialog.destroy(), self._push_to_canvas()], style="Action.TButton")
         btn_push.pack(pady=10, fill="x")
+
+        # [FIX] Add explicit "Upload" button for clarity if that was requested
+        ttk.Button(dialog, text="☁️ Upload to Canvas Now", 
+                   command=lambda: [dialog.destroy(), self._upload_page_to_canvas(None, None, self._get_canvas_api())] if False else [dialog.destroy(), self._push_to_canvas()],
+                   style="TButton").pack(pady=5)
 
 
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
@@ -1771,8 +1812,9 @@ YOUR WORKFLOW:
             for f in files:
                 if f.lower().endswith(('.docx', '.pptx', '.pdf', '.xlsx')): count += 1
         
+        # [FIX] Allow upload button even if files are present (per user request), but warn.
         if count == 0: return True, "All files converted to Canvas WikiPages."
-        return False, f"Found {count} original files in course. Prepare them for Canvas first!"
+        return False, f"Found {count} original files. (You can still upload, but they will take up space)"
 
     def _check_ada_issues(self):
         """Scans for remaining ADA markers like [FIX_ME] and runs Auto-Fixer one last time."""

@@ -2,6 +2,61 @@ import requests
 import base64
 import os
 
+def validate_api_key(api_key):
+    """
+    Sends a minimal request to Gemini to check if the key is valid.
+    Returns: (is_valid, message)
+    """
+    if not api_key:
+        return False, "No API Key provided."
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    
+    headers = {
+        "Content-Type": "application/json"
+    }
+    
+    # Simple text prompt
+    payload = {
+        "contents": [{
+            "parts": [{"text": "Hello"}]
+        }],
+        "generationConfig": {
+            "maxOutputTokens": 5,
+        }
+    }
+
+    import time
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=10)
+            
+            if response.status_code == 200:
+                return True, "Success! Key is valid."
+            elif response.status_code == 429:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                else:
+                    return False, "Quota Exceeded (429): Please wait a minute."
+            else:
+                # Parse error message
+                try:
+                    err_json = response.json()
+                    msg = err_json.get('error', {}).get('message', response.text)
+                    return False, f"API Error: {msg}"
+                except:
+                    return False, f"API Error ({response.status_code}): {response.text}"
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(1)
+                continue
+            return False, f"Connection Failed: {str(e)}"
+    
+    return False, "Validation Timed Out"
+
 def generate_latex_from_image(image_path, api_key):
     """
     Uses Gemini 1.5 Flash to convert an image of a math equation into LaTeX.
@@ -18,7 +73,7 @@ def generate_latex_from_image(image_path, api_key):
             encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
 
         # 2. Prepare API Call
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
         
         headers = {
             "Content-Type": "application/json"
@@ -46,8 +101,22 @@ def generate_latex_from_image(image_path, api_key):
             }
         }
 
-        # 3. Call Gemini
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        # 3. Call Gemini with Retry
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                break
+            elif response.status_code == 429:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                else:
+                    return None, f"Quota Exceeded (429): Please wait a minute."
+            else:
+                return None, f"Gemini API Error ({response.status_code}): {response.text}"
         
         if response.status_code != 200:
             return None, f"Gemini API Error ({response.status_code}): {response.text}"
@@ -152,7 +221,7 @@ def generate_alt_text_from_image(image_path, api_key, context=None):
             encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
 
         # 2. Prepare API Call
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
         
         headers = {
             "Content-Type": "application/json"
@@ -185,11 +254,25 @@ def generate_alt_text_from_image(image_path, api_key, context=None):
             }
         }
 
-        # 3. Call Gemini
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        
+        # 3. Call Gemini with Retry Logic
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                break
+            elif response.status_code == 429:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1)) # Backoff: 2s, 4s, 6s
+                    continue
+                else:
+                    return None, f"Quota Exceeded (429): Please wait a minute and try again."
+            else:
+                return None, f"Gemini API Error ({response.status_code}): {response.text}"
+
         if response.status_code != 200:
-            return None, f"Gemini API Error ({response.status_code}): {response.text}"
+             return None, f"Gemini API Error ({response.status_code}): {response.text}"
 
         res_json = response.json()
         

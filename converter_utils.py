@@ -129,7 +129,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .code-block {{ margin: 15px 0; }}
         
         .slide-container {{ 
-            overflow: auto; 
+            display: flow-root; 
             clear: both; 
             margin-bottom: 60px; 
             padding: 60px; 
@@ -635,7 +635,7 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                 f"margin-bottom: 60px; padding: 60px; border: 2px solid #ccc; "
                 f"border-top: 5px solid {accent1}; border-radius: 12px; "
                 f"background-color: {light1}; box-shadow: 0 8px 30px rgba(0,0,0,0.1); "
-                f"position: relative; overflow: auto; clear: both;"
+                f"position: relative; display: flow-root; clear: both;"
             )
             html_parts.append(f'<div class="slide-container" id="slide-{slide_num}" style="{slide_style}">')
             html_parts.append(f'<div class="slide-num" style="position: absolute; top: 15px; right: 25px; font-size: 0.8em; color: #666; font-weight: bold;">Slide {slide_num}</div>')
@@ -834,6 +834,7 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                         # 1. Save original bytes first
                         with open(image_full_path, 'wb') as img_f:
                             img_f.write(image_bytes)
+
                         
                         # 2. [NEW] Image Optimization & Magic Transparency
                         # We save as PNG for transparency support
@@ -876,14 +877,44 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                                 alt_text = io_handler.memory[mem_key]
                             else:
                                 slide_title = slide.shapes.title.text_frame.text if slide.shapes.title else f"Slide {slide_num}"
-                                choice = io_handler.prompt_image(f"   > Alt Text for Slide {slide_num} image (or Enter to skip): ", image_full_path, context=f"Context: {slide_title}").strip()
-                                if choice:
-                                    if choice == "__DECORATIVE__":
-                                        alt_text = ""
-                                    else:
-                                        alt_text = choice
-                                    io_handler.memory[mem_key] = alt_text
-                                    io_handler.save_memory()
+                                
+                                # [FIX] ADD AI SUGGESTION LOGIC HERE
+                                ai_suggestion = None
+                                
+                                # Debug Logging
+                                if not io_handler.api_key:
+                                    io_handler.log(f"    [JEANIE] Skipped (No API Key found). Check Settings.")
+                                else:
+                                    # We need to import jeanie_ai (it might not be imported yet in this scope)
+                                    try:
+                                        import jeanie_ai
+                                        io_handler.log(f"    [JEANIE] Generating suggestion for Slide {slide_num}...")
+                                        ai_suggestion, error_msg = jeanie_ai.generate_alt_text_from_image(image_full_path, io_handler.api_key, context=slide_title)
+                                        
+                                        if ai_suggestion:
+                                            io_handler.log(f"    [JEANIE] Success: {ai_suggestion[:30]}...")
+                                        else:
+                                            io_handler.log(f"    [JEANIE] Failed: {error_msg}")
+                                            
+                                    except Exception as e:
+                                        io_handler.log(f"    [JEANIE] Critical Error: {e}")
+
+                                prompt_text = f"   > Alt Text for Slide {slide_num} image (Enter to accept suggestion): "
+                                if ai_suggestion:
+                                    prompt_text = f"   > Alt Text for Slide {slide_num} (Default: {ai_suggestion[:20]}...): "
+                                
+                                # Pass suggestion to the GUI prompt
+                                choice = io_handler.prompt_image(prompt_text, image_full_path, context=f"Context: {slide_title}", suggestion=ai_suggestion).strip()
+                                
+                                if not choice and ai_suggestion:
+                                    alt_text = ai_suggestion
+                                elif choice == "__DECORATIVE__":
+                                    alt_text = ""
+                                else:
+                                    alt_text = choice
+                                    
+                                io_handler.memory[mem_key] = alt_text
+                                io_handler.save_memory()
 
                         html_parts.append(f'<img src="{rel_path}" alt="{alt_text}" width="{width_px}" class="slide-image" style="{final_img_style}">')
                     except Exception as img_err:
@@ -895,7 +926,8 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                     notes_text = slide.notes_slide.notes_text_frame.text.strip()
                     if notes_text:
                         html_parts.append('<div class="speaker-notes" style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-left: 4px solid #4b3190; font-style: italic;">')
-                        html_parts.append(f'<strong>Speaker Notes:</strong><br>{notes_text.replace("\n", "<br>")}')
+                        notes_html = notes_text.replace("\n", "<br>")
+                        html_parts.append(f'<strong>Speaker Notes:</strong><br>{notes_html}')
                         html_parts.append('</div>')
             except: pass
 
@@ -1372,6 +1404,91 @@ def update_links_in_directory(directory, old_filename, new_filename):
                         count += 1
                 except Exception as e:
                     print(f"Error updating links in {file}: {e}")
+    return count
+
+
+
+def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=None):
+    """
+    Updates all HTML files to replace links to .pptx files with links to .html files.
+    Handles Canvas-style links with $IMS-CC-FILEBASE$ tokens and data-api-endpoint attributes.
+    Makes link text human-readable by replacing underscores with spaces.
+    
+    Args:
+        root_dir: Root directory to scan
+        pptx_filename: Original PowerPoint filename (e.g., "PE_1_4-5_Creating_Functions.pptx")
+        html_filename: New HTML filename (e.g., "PE_1_4-5_Creating_Functions.html")
+        log_func: Optional logging function
+    
+    Returns:
+        Number of files updated
+    """
+    if log_func:
+        log_func(f"  [Link Update] {pptx_filename} -> {html_filename}")
+    
+    # Get base names without extensions
+    pptx_base = os.path.splitext(pptx_filename)[0]
+    html_base = os.path.splitext(html_filename)[0]
+    
+    # URL-encoded versions (Canvas uses %20 for spaces)
+    pptx_encoded = pptx_base.replace(" ", "%20")
+    html_encoded = html_base.replace(" ", "%20")
+    
+    count = 0
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            if not file.endswith('.html'):
+                continue
+            
+            filepath = os.path.join(root, file)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                modified = False
+                
+                # Pattern 1: href with $IMS-CC-FILEBASE$ token
+                # Replace: href="$IMS-CC-FILEBASE$/.../filename.pptx..."
+                # With:    href="$IMS-CC-FILEBASE$/.../filename.html..."
+                pattern1 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_base)}([^"]*)"'
+                if re.search(pattern1, content):
+                    content = re.sub(pattern1, rf'href="\1{html_base}\2"', content)
+                    modified = True
+                
+                # Pattern 2: URL-encoded version
+                pattern2 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_encoded)}([^"]*)"'
+                if re.search(pattern2, content):
+                    content = re.sub(pattern2, rf'href="\1{html_encoded}\2"', content)
+                    modified = True
+                
+                # Pattern 3: title attributes
+                pattern3 = rf'title="{re.escape(pptx_base)}"'
+                if re.search(pattern3, content):
+                    content = re.sub(pattern3, f'title="{html_base}"', content)
+                    modified = True
+                
+                # Pattern 4: Link text ending with (PPTX) - make human-readable
+                # Replace: >PE_1_4-5_Creating_Functions (PPTX)</a>
+                # With:    >PE 1 4-5 Creating Functions (HTML)</a>
+                pattern4 = rf'>([^<]*){re.escape(pptx_base)}([^<]*)\(PPTX\)</a>'
+                if re.search(pattern4, content):
+                    # Make the link text human-readable by replacing underscores with spaces
+                    readable_name = html_base.replace('_', ' ')
+                    content = re.sub(pattern4, rf'>\1{readable_name}\2(HTML)</a>', content)
+                    modified = True
+                
+                if modified:
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    count += 1
+                    
+            except Exception as e:
+                if log_func:
+                    log_func(f"  [Warning] Could not update {file}: {e}")
+    
+    if log_func:
+        log_func(f"  [Link Update] Updated {count} file(s)")
+    
     return count
 
 
