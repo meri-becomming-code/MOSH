@@ -18,7 +18,7 @@
 ### 1. **"Spread the Word" Button** ✓
 - Located in the sidebar of the toolkit
 - Gives users a pre-written message they can copy/paste
-- Includes the GitHub link
+- Includes the .io landing page link (perfect for sharing!)
 - Perfect for quick sharing!
 
 ### 2. **Share Dialog Messaging** ✓
@@ -38,7 +38,7 @@ universities!
 
 Worth checking out to save hours of manual labor!
 
-Download/GitHub: https://github.com/meri-becomming-code/mosh
+Download: https://meri-becomming-code.github.io/mosh/
 ```
 
 ---
@@ -95,7 +95,7 @@ Body: Hi fellow educators! With the April 2026 deadline approaching,
 I built a free toolkit that automatically fixes 80% of ADA issues in 
 Canvas courses. Works for K-12 and Higher Ed. Open-source and free forever.
 
-[Link to GitHub]
+https://meri-becomming-code.github.io/mosh/
 
 Would love feedback from the community!
 ```
@@ -133,8 +133,8 @@ course content and has already saved hundreds of hours for alpha testers.
 Since you're involved in [EdTech/accessibility/Canvas], I thought you 
 might find it interesting to share with your community.
 
-GitHub: https://github.com/meri-becomming-code/mosh
-3-min demo: [YouTube link]
+Download: https://meri-becomming-code.github.io/mosh/
+3-min demo: [YouTube link when ready]
 
 Would love your thoughts!
 
@@ -324,8 +324,8 @@ What it does:
 - Works for K-12 and college
 - 100% free, no strings attached
 
-GitHub: [link]
-3-min demo: [video link]
+Download: https://meri-becomming-code.github.io/mosh/
+3-min demo: [video link when ready]
 
 Built this for my son Mosh, who is visually impaired. Every student 
 deserves accessible content.
@@ -386,7 +386,7 @@ automatically. Saves hours of manual work.
 Works for K-12 & Higher Ed.
 100% open-source.
 
-Try it: [link]
+Try it: https://meri-becomming-code.github.io/mosh/
 
 #EdTech #ADACompliance #Teachers
 ```
@@ -404,7 +404,7 @@ Released it yesterday for the education community to use freely.
 Perfect timing with the April 2026 federal deadline.
 
 If you teach or design courses in Canvas, you might find this helpful:
-[link]
+https://meri-becomming-code.github.io/mosh/
 
 #HigherEducation #EdTech #Accessibility #K12Education
 ```
@@ -422,7 +422,7 @@ tables, color contrast, the works.
 I made it for my son Mosh (visually impaired) and I'm sharing it free 
 with all educators.
 
-Download: [link]
+Download: https://meri-becomming-code.github.io/mosh/
 Works for elementary → university!
 
 Share with your department! 💙

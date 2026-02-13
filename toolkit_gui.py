@@ -960,7 +960,7 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
                      "It was built by a fellow educator and it's completely free and open-source. "
                      "Works for elementary, middle school, high school, community colleges, and universities!\n\n"
                      "Worth checking out to save hours of manual labor!\n\n"
-                     "Download/GitHub: https://github.com/meri-becomming-code/mosh")
+                     "Download: https://meri-becomming-code.github.io/mosh/")
         
         txt = tk.Text(dialog, height=8, width=60, font=("Segoe UI", 9))
         txt.pack(pady=10, padx=20)
