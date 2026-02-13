@@ -206,8 +206,11 @@ class ToolkitGUI:
         txt.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         
         # Insert Documentation Content
-        doc_content = """MOSH Faculty ADA Toolkit (2026 Edition)
-=====================================
+        doc_content = """MOSH ADA Toolkit for K-12 & Higher Ed (2026 Edition)
+========================================================
+
+📚 FOR ALL EDUCATORS: K-12 Teachers, College Instructors, & Instructional Designers
+----------------------------------------------------------------------------------
 
 DEDICATION & PARTNERSHIP
 -----------------------
@@ -218,7 +221,7 @@ and to all the other students struggling with their own challenges.
 BUILDING WITH AI:
 MOSH's Toolkit was built as a human-AI collaboration. Dr. Meri Kasprak 
 worked alongside Antigravity, an advanced coding AI from Google DeepMind, 
-to ensure this toolkit remains free, powerful, and accessible for teachers.
+to ensure this toolkit remains free, powerful, and accessible for all educators.
 
 🚀 QUICK START WORKFLOW
 -----------------------
@@ -227,11 +230,12 @@ Step 2: Use the conversion buttons to build your Canvas Pages.
 Step 3: Run "Auto-Fix" followed by "Guided Review" for ADA compliance.
 Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
 
-💡 TIPS FOR FACULTY
--------------------
+💡 TIPS FOR ALL TEACHERS & INSTRUCTORS
+---------------------------------------
 - Always use a NEW, EMPTY Canvas course for testing your remediated files.
 - Hard-Working Logs: Check the "Activity Log" at the bottom to see exactly what structural fixes were made to each file.
-- ✨ MOSH Magic: If you have a Gemini API key (see Settings), you can click the Magic Wand (🪄) during Guided Review to have our AI write your Alt Tags or Math LaTeX for you!
+- ✨ MOSH Magic (OPTIONAL): If you have a paid Gemini API key, you can click the Magic Wand (🪄) during Guided Review to have AI write your Alt Tags or Math LaTeX for you!
+- 🆓 No API Key? No Problem! You can skip AI features and still use all the core tools.
 
 📦 FILE CONVERSION
 ------------------
@@ -242,13 +246,14 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
 ⚖️ LICENSE & SPIRIT
 -------------------
 - Released under GNU General Public License version 3.
-- This is non-commercial, open-source software built for the academic community.
+- This is non-commercial, open-source software built for the education community.
 - "Making Online Spaces Helpful" (MOSH) is dedicated to helping every student succeed.
 
 📣 SPREAD THE WORD
 ------------------
-- April 2026 Deadline: The goal is to help every teacher reach compliance safely and quickly.
-- If this tool saved you time, click 'Spread the Word' on the sidebar to copy a message you can share with your department. Let's help everyone meet the deadline together!
+- April 2026 Deadline: The goal is to help every educator reach compliance safely and quickly.
+- Works for K-12, community colleges, and universities!
+- If this tool saved you time, click 'Spread the Word' on the sidebar to share with colleagues. Let's help everyone meet the deadline together!
 """
         txt.insert(tk.END, doc_content)
         txt.config(state='disabled') # Read-only
@@ -503,12 +508,14 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
                                 wraplength=180, justify="center")
         lbl_tagline.pack(pady=(0, 20), padx=10)
         
-        ttk.Label(sidebar, text="v2026.1", style="Sidebar.TLabel", font=("Segoe UI", 8)).pack(pady=(0, 20))
+        ttk.Label(sidebar, text="v2026.1", style="Sidebar.TLabel", font=("Segoe UI", 8)).pack(pady=(0, 10))
         
+        # [NEW] First-Time User Button - PROMINENT!
+        ttk.Button(sidebar, text="💡 First Time? Start Here!", command=self._show_quick_start, style="Action.TButton").pack(pady=10, padx=10, fill="x")
 
         # [NEW] Viral/Mission Button
         self.btn_share = ttk.Button(sidebar, text="📣 SPREAD THE WORD", command=self._show_share_dialog, style="Action.TButton")
-        self.btn_share.pack(pady=20, padx=10, fill="x")
+        self.btn_share.pack(pady=10, padx=10, fill="x")
 
         # [NEW] Advanced Button
         ttk.Button(sidebar, text="🛠️ Advanced Tasks", command=self._show_advanced_dialog).pack(pady=10, padx=10, fill="x")
@@ -940,17 +947,18 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         tk.Label(dialog, text="Help Your Colleagues Meet the Deadline!", 
                  font=("Segoe UI", 14, "bold"), bg=colors["bg"], fg=colors["header"]).pack(pady=15)
 
-        msg = ("Teachers everywhere are stressed about the April 2026 compliance deadline.\n"
-               "If this tool helped you save time, please share it with your department!\n\n"
+        msg = ("Educators everywhere are stressed about the April 2026 compliance deadline.\n"
+               "If this tool helped you save time, please share it with your colleagues!\n\n"
                "Copy the message below to send in an email or Slack:")
         tk.Label(dialog, text=msg, wraplength=500, bg=colors["bg"], fg=colors["fg"], justify="center").pack(pady=5)
 
         share_text = ("Hi team,\n\n"
                      "I found a great free tool called the MOSH ADA Toolkit that automatically "
-                     "remediates Canvas pages. It fixes headings, tables, and contrast issues in seconds. "
-                     "It even has an AI co-pilot called 'Jeanie Magic' that writes Math LaTeX and "
-                     "image descriptions for you! This makes the April 2026 deadline much easier.\n\n"
-                     "It was built by a fellow educator and it's completely free. "
+                     "remediates Canvas pages for K-12 and Higher Ed. It fixes headings, tables, and contrast issues in seconds. "
+                     "It even has an optional AI co-pilot called 'Jeanie Magic' that can write Math LaTeX and "
+                     "image descriptions! This makes the April 2026 deadline much easier.\n\n"
+                     "It was built by a fellow educator and it's completely free and open-source. "
+                     "Works for elementary, middle school, high school, community colleges, and universities!\n\n"
                      "Worth checking out to save hours of manual labor!\n\n"
                      "Download/GitHub: https://github.com/meri-becomming-code/mosh")
         
@@ -968,6 +976,111 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         btn_copy.pack(pady=15)
 
         tk.Button(dialog, text="Close", command=dialog.destroy, width=12).pack(pady=5)
+
+    def _show_quick_start(self):
+        """Shows beginner-friendly quick start guide for first-time users."""
+        dialog = Toplevel(self.root)
+        dialog.title("First Time? Quick Start Guide")
+        dialog.geometry("750x700")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(True, True)
+
+        colors = THEMES[self.config.get("theme", "light")]
+        dialog.configure(bg=colors["bg"])
+
+        tk.Label(dialog, text="🚀 Quick Start Guide", font=("Segoe UI", 20, "bold"), 
+                 bg=colors["bg"], fg=colors["header"]).pack(pady=15)
+        
+        tk.Label(dialog, text="For K-12 Teachers, College Instructors, & Instructional Designers", 
+                 font=("Segoe UI", 11, "italic"), bg=colors["bg"], fg=colors["subheader"]).pack()
+
+        container = tk.Frame(dialog, bg=colors["bg"])
+        container.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        txt = scrolledtext.ScrolledText(container, wrap=tk.WORD, font=("Consolas", 10), 
+                                        bg=colors["bg"], fg=colors["fg"], padx=15, pady=15)
+        txt.pack(fill="both", expand=True)
+        
+        content = """
+📋 THREE SIMPLE STEPS
+
+STEP 1: Get Your Course Files From Canvas
+   1. In Canvas: Settings → Export Course Content  
+   2. Click "Create Export" and wait for the email
+   3. Download the .imscc file to your computer
+
+STEP 2: Fix Your Content
+   1. Launch this toolkit
+   2. Click "Select .imscc File" (Step 1)
+   3. Click "Auto-Fix Issues" (fixes 80% automatically!)
+   4. Click "Guided Review" (walks you through the rest)
+
+   🆓 NO API KEY NEEDED! You can skip all AI features.
+
+STEP 3: Test & Upload
+   1. Click "Am I Ready to Upload?" for final check
+   2. In Canvas: Create a NEW EMPTY test course
+   3. Import your fixed .imscc file
+   4. Review everything looks good
+   5. Done! 🎉
+
+────────────────────────────────────────
+
+💡 FIRST-TIME TIPS
+
+For K-12 Teachers:
+✓ Works with Canvas Free for Teachers
+✓ No coding or technical skills needed
+✓ All features work without an API key
+✓ Safe - keeps backup of original files
+
+For College Instructors:
+✓ Works with your institution's Canvas
+✓ Handles large courses (100+ pages)
+✓ Preserves all content structure
+✓ Creates detailed activity logs
+
+For Instructional Designers:
+✓ Batch process multiple courses
+✓ Generate compliance audit reports
+✓ Advanced Canvas API integration
+✓ Optional AI features for efficiency
+
+────────────────────────────────────────
+
+❓ COMMON QUESTIONS
+
+Q: Do I need a Gemini API key?
+A: NO! The AI features are completely optional.
+
+Q: Will this change my original files?
+A: Your originals are backed up automatically.
+
+Q: What if I mess up?
+A: Always test in a NEW EMPTY Canvas course first!
+
+Q: Does this work for K-12?
+A: YES! Elementary through high school.
+
+Q: How long does it take?
+A: Most courses: 10-30 minutes.
+
+────────────────────────────────────────
+
+🎯 April 2026 Deadline
+The U.S. Department of Justice requires all public 
+institutions (K-12 and Higher Ed) to have accessible 
+digital content by April 2026.
+
+This toolkit helps you meet that deadline stress-free!
+"""
+        
+        txt.insert(tk.END, content)
+        txt.config(state='disabled')
+
+        tk.Button(dialog, text="✅ Got it! Let's Start", command=dialog.destroy, 
+                 bg=colors["primary"], fg="white", font=("Segoe UI", 11, "bold")).pack(pady=15)
 
     def _disable_buttons(self):
         """Gray out all action buttons while a task is running."""
