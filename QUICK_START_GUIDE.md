@@ -62,6 +62,22 @@ Makes your Canvas course content accessible (ADA compliant) in minutes instead o
 
 ---
 
+## 📖 **Quick Definitions (Don't Worry, It's Easy!)**
+
+**What's an .imscc file?**  
+Think of it as a "backup copy" of your Canvas course. When you export from Canvas, it creates this file. You give this file to the toolkit to fix, then upload the fixed version back to Canvas.
+
+**What's alt text?**  
+A short description of an image that helps blind/visually impaired students understand what's in the picture. Example: Instead of just "graph.png", you write "Bar graph showing test scores improved from 70% to 95%".
+
+**What does "accessibility" mean?**  
+Making sure students with disabilities (blind, low vision, using screen readers, etc.) can fully access your course content.
+
+**What's ADA compliance?**  
+Federal law requiring public schools/colleges to make digital content accessible. The April 2026 deadline means all your Canvas content needs to work for students with disabilities.
+
+---
+
 ## ❓ **Common Questions**
 
 **Q: Do I need a Gemini API key?**  
