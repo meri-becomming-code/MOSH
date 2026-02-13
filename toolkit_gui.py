@@ -358,6 +358,10 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         ent_course = tk.Entry(frame_course, width=20)
         ent_course.insert(0, self.config.get("canvas_course_id", ""))
         ent_course.pack(side="left", pady=5)
+        
+        # Warning about course reset
+        tk.Label(dialog, text="⚠️ WARNING: If you reset course content in Canvas, you'll get a NEW course ID!", 
+                 bg=colors["bg"], fg="#E65100", font=("Segoe UI", 8, "bold"), wraplength=500).pack(anchor="w", padx=40, pady=(2,0))
 
         tk.Label(dialog, text="4. [OPTIONAL] MOSH Magic (Gemini API Key):", bg=colors["bg"], fg=colors["header"], font=("bold")).pack(pady=(15,0), anchor="w", padx=40)
         tk.Label(dialog, text="Required for '🪄 Magic' auto-generation. Requires a PAID API key (free tier doesn't work).", bg=colors["bg"], fg="gray", font=("Segoe UI", 8)).pack(anchor="w", padx=40)
@@ -414,7 +418,9 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
                                 "1. Open your Canvas Playground course in your browser.\n"
                                 "2. Look at the address bar at the top.\n"
                                 "3. The ID is the group of numbers at the very end.\n\n"
-                                "Example: if the link is .../courses/12345, your ID is 12345.")
+                                "Example: if the link is .../courses/12345, your ID is 12345.\n\n"
+                                "⚠️ IMPORTANT: If you reset course content, Canvas creates a NEW course with a DIFFERENT ID. "
+                                "You'll need to come back here and update this number!")
 
         tk.Button(frame_course, text="❓ Help Me Find This", command=open_course_help, font=("Segoe UI", 8)).pack(side="left", padx=5)
 
