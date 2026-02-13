@@ -1891,11 +1891,36 @@ YOUR WORKFLOW:
         dialog.title("🚦 Pre-Flight Check")
         dialog.geometry("550x650")
         dialog.transient(self.root)
+        dialog.grab_set()
+
+        colors = THEMES[self.config.get("theme", "light")]
+        dialog.configure(bg=colors["bg"])
         
         ttk.Label(dialog, text="🚦 Pre-Flight Check", style="Header.TLabel").pack(pady=10)
         ttk.Label(dialog, text="Checking if your course is safe to upload...", font=("Segoe UI", 10)).pack(pady=5)
 
-        results_frame = ttk.Frame(dialog, padding=20)
+        # Main container with scrollable results
+        main_container = ttk.Frame(dialog)
+        main_container.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(main_container, bg=colors["bg"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        results_frame = ttk.Frame(scrollable_frame, padding=20)
         results_frame.pack(fill="both", expand=True)
 
         self.target_dir = self.lbl_dir.get().strip()
@@ -1917,9 +1942,13 @@ YOUR WORKFLOW:
             lbl_detail = ttk.Label(results_frame, text=detail, font=("Segoe UI", 9), wraplength=400)
             lbl_detail.grid(row=i, column=1, sticky="w", padx=10)
 
-        # Final Score
-        score_frame = ttk.Frame(dialog, padding=10)
-        score_frame.pack(fill="x")
+        # Fixed Footer for action buttons
+        footer = ttk.Frame(dialog, padding=10)
+        footer.pack(side="bottom", fill="x")
+
+        # Final Score Header
+        score_header = ttk.Frame(footer)
+        score_header.pack(fill="x", pady=10)
         
         if ready_count == len(checks):
             msg = "🚀 YOU ARE CLEAR FOR TAKEOFF!"
@@ -1928,25 +1957,24 @@ YOUR WORKFLOW:
             push_text = "🚀 Send My Clean Course to Canvas Now"
         else:
             msg = "🛠️ Almost there! Some items need attention."
-            color = "#d4a017"
+            color = "#d4a017" # Amber
             advice = "Mosh: 'Remediation is tough, but you're doing great. I recommend fixing the issues above, but you're the pilot!'"
             push_text = "🚀 Upload to Canvas Anyway (Not Recommended)"
 
-        tk.Label(score_frame, text=msg, font=("Segoe UI", 12, "bold"), foreground=color).pack()
-        tk.Label(score_frame, text=advice, font=("Segoe UI", 10, "italic"), foreground=colors.get("fg", "#212121")).pack(pady=5)
+        tk.Label(score_header, text=msg, font=("Segoe UI", 12, "bold"), fg=color, bg=colors["bg"]).pack()
+        tk.Label(score_header, text=advice, font=("Segoe UI", 10, "italic"), fg=colors.get("fg", "#212121"), bg=colors["bg"]).pack(pady=5)
 
-        # [NEW] Push Button NOW ALWAYS AVAILABLE
-        btn_push = ttk.Button(score_frame, text=push_text, 
+        # Primary Action Button
+        btn_push = ttk.Button(footer, text=push_text, 
                               command=lambda: [dialog.destroy(), self._push_to_canvas()], style="Action.TButton")
-        btn_push.pack(pady=10, fill="x")
+        btn_push.pack(pady=5, fill="x")
 
-        # [FIX] Add explicit "Upload" button for clarity if that was requested
-        ttk.Button(dialog, text="☁️ Upload to Canvas Now", 
-                   command=lambda: [dialog.destroy(), self._upload_page_to_canvas(None, None, self._get_canvas_api())] if False else [dialog.destroy(), self._push_to_canvas()],
+        # Explicit Upload Page Button
+        ttk.Button(footer, text="☁️ Direct Canvas Upload", 
+                   command=lambda: [dialog.destroy(), self._push_to_canvas()],
                    style="TButton").pack(pady=5)
 
-
-        ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
+        ttk.Button(footer, text="Close", command=dialog.destroy).pack(pady=10)
 
     def _check_source_files(self):
         """Checks if there are still unconverted Word/PPT/PDFs."""

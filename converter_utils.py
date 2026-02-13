@@ -1385,17 +1385,19 @@ def update_links_in_directory(directory, old_filename, new_filename):
                         # Standardize href for comparison
                         clean_href = urllib.parse.unquote(href).replace('\\', '/')
                         
+                        # Preserve prefixes like $IMS-CC-FILEBASE$/ by only replacing the filename part
                         if clean_href.endswith(old_base.replace('\\', '/')) or href == old_base_enc:
-                            a['href'] = new_href
-                            # Update link text automatically per user request
+                            # Use regex or simple replace that targets the specific filename
+                            a['href'] = href.replace(old_base, new_base).replace(old_base_enc, new_base.replace(' ', '%20'))
+                            # Update link text to be human-readable
                             a.string = new_link_text
                             modified = True
                     
                     # 2. Update Images (<img> tags)
                     for img in soup.find_all('img', src=True):
                         src = img['src']
-                        if src == old_base or src == old_base_enc:
-                            img['src'] = new_href
+                        if src.endswith(old_base) or src == old_base_enc:
+                            img['src'] = src.replace(old_base, new_base).replace(old_base_enc, new_base.replace(' ', '%20'))
                             modified = True
 
                     if modified:
@@ -1448,17 +1450,18 @@ def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=N
                 modified = False
                 
                 # Pattern 1: href with $IMS-CC-FILEBASE$ token
-                # Replace: href="$IMS-CC-FILEBASE$/.../filename.pptx..."
-                # With:    href="$IMS-CC-FILEBASE$/.../filename.html..."
-                pattern1 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_base)}([^"]*)"'
+                # Handles .pptx, .ppt, and URL encoded versions
+                # Replace: href="$IMS-CC-FILEBASE$/.../filename.pptx"
+                # With:    href="$IMS-CC-FILEBASE$/.../filename.html"
+                pattern1 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_base)}\.pptx?([^"]*)"'
                 if re.search(pattern1, content):
-                    content = re.sub(pattern1, rf'href="\1{html_base}\2"', content)
+                    content = re.sub(pattern1, rf'href="\1{html_base}.html\2"', content)
                     modified = True
                 
                 # Pattern 2: URL-encoded version
-                pattern2 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_encoded)}([^"]*)"'
+                pattern2 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_encoded)}\.pptx?([^"]*)"'
                 if re.search(pattern2, content):
-                    content = re.sub(pattern2, rf'href="\1{html_encoded}\2"', content)
+                    content = re.sub(pattern2, rf'href="\1{html_encoded}.html\2"', content)
                     modified = True
                 
                 # Pattern 3: title attributes
