@@ -126,7 +126,7 @@ Subject: Free ADA Toolkit for Canvas (April 2026 Deadline)
 
 Hi [Name],
 
-I'm Dr. Meri Kasprak. I have a PhD in Instructional Design for Online Learning and a background in MIS/IT. I've spent my career perfecting online course delivery, and I recently built a free, open-source toolkit to help educators meet the April 2026 ADA deadline. It automatically fixes Canvas course content and has already saved hundreds of hours for alpha testers.
+I'm Dr. Meri Kasprak. I have a PhD in Instructional Design for Online Learning from Capella University and a background in MIS/IT. I've spent my career perfecting online course delivery, and I recently built a free, open-source toolkit to help educators meet the April 2026 ADA deadline. It automatically fixes Canvas course content and has already saved hundreds of hours for alpha testers.
 
 Since you're involved in [EdTech/accessibility/Canvas], I thought you 
 might find it interesting to share with your community.
@@ -310,7 +310,7 @@ Set up tracking for:
 ```
 Hi fellow educators,
 
-I'm Dr. Meri Kasprak. I have a PhD in Instructional Design for Online Learning and a background in MIS/IT. Like many of you, I've spent years building Canvas content and was stressing about the April 2026 ADA deadline. So I used my background in tech and design to build a free toolkit that automates about 80% of the remediation process.
+I'm Dr. Meri Kasprak. I have a PhD in Instructional Design for Online Learning from Capella University and a background in MIS/IT. Like many of you, I've spent years building Canvas content and was stressing about the April 2026 ADA deadline. So I used my background in tech and design to build a free toolkit that automates about 80% of the remediation process.
 
 Just released it as open-source. Would love feedback from this community!
 
@@ -391,7 +391,7 @@ Try it: https://meri-becomming-code.github.io/mosh/
 ```
 After years of designing online courses and seeing the struggle of meeting ADA compliance, I realized: there has to be a better way.
 
-So I used my PhD in Instructional Design and my background in MIS to build a free, open-source toolkit that automates 80% of the work.
+So I used my PhD in Instructional Design for Online Learning from Capella University and my background in MIS to build a free, open-source toolkit that automates 80% of the work.
 
 Released it today for the education community to use freely.
 
