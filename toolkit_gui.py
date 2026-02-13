@@ -1107,9 +1107,10 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
 
         dialog = Toplevel(self.root)
         dialog.title("MOSH's Toolkit: Making Online Spaces Helpful")
-        dialog.geometry("750x700")
+        dialog.geometry("800x750")  # Bigger window
         dialog.lift()
         dialog.focus_force()
+        dialog.resizable(True, True)  # Allow resizing
         
         # Style
         colors = THEMES[self.config.get("theme", "light")]
@@ -1151,15 +1152,37 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         🐛 Support: meredithkasprak@gmail.com
         """
         
-        # [NEW] Premium Intro Card
-        card = tk.Frame(dialog, bg=colors["bg"], highlightbackground=colors["primary"], highlightthickness=2, padx=20, pady=20)
-        card.pack(pady=40, padx=40, fill="both", expand=True)
+        # Title at top (outside scrollable area)
+        lbl_title = tk.Label(dialog, text="MOSH'S TOOLKIT", font=("Segoe UI", 24, "bold"), bg=colors["bg"], fg=colors["header"])
+        lbl_title.pack(pady=(20, 10))
+        
+        # Scrollable content frame using Canvas
+        container = tk.Frame(dialog, bg=colors["bg"])
+        container.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        
+        canvas = tk.Canvas(container, bg=colors["bg"], highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        
+        scrollable_frame = tk.Frame(canvas, bg=colors["bg"], highlightbackground=colors["primary"], highlightthickness=2, padx=20, pady=20)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Mousewheel scrolling
+        def _on_mousewheel_welcome(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel_welcome)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        lbl_title = tk.Label(card, text="MOSH'S TOOLKIT", font=("Segoe UI", 24, "bold"), bg=colors["bg"], fg=colors["header"])
-        lbl_title.pack(pady=(0, 10))
-
-        lbl = tk.Label(card, text=intro, justify="left", font=("Segoe UI", 11), 
-                       wraplength=550, bg=colors["bg"], fg=colors["fg"])
+        lbl = tk.Label(scrollable_frame, text=intro, justify="left", font=("Segoe UI", 11), 
+                       wraplength=650, bg=colors["bg"], fg=colors["fg"])
         lbl.pack(pady=10, padx=10)
         
         # Checkbox
