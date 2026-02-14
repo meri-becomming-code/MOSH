@@ -2231,6 +2231,50 @@ YOUR WORKFLOW:
         else:
             messagebox.showinfo("Health Report", "Your course is in peak physical condition! No broken links or missing images found.")
 
+    def _run_all_links_fix(self):
+        """Finds all document links and attempts to point them to matching HTML files if they exist."""
+        if not self.target_dir:
+            messagebox.showwarning("Incomplete", "Please select a target directory first.")
+            return
+            
+        self.gui_handler.log("\n--- Starting Global Document Link Repair ---")
+        self.gui_handler.log(f"Scanning target: {self.target_dir}")
+        
+        # We need a map of Document -> HTML
+        # In Canvas, usually they have the same base name.
+        doc_map = {}
+        for root, dirs, files in os.walk(self.target_dir):
+            for file in files:
+                if file.lower().endswith(('.docx', '.pdf', '.pptx', '.xlsx', '.doc', '.ppt', '.xls')):
+                    base = os.path.splitext(file)[0].lower()
+                    doc_map[base] = file
+        
+        total_updated = 0
+        doc_count = 0
+        
+        for base, original_file in doc_map.items():
+            # Check if a matching .html file exists anywhere in target_dir
+            found_html = None
+            for root, dirs, files in os.walk(self.target_dir):
+                html_name = f"{os.path.splitext(original_file)[0]}.html"
+                if html_name in files:
+                    found_html = html_name
+                    break
+            
+            if found_html:
+                doc_count += 1
+                updated = converter_utils.update_doc_links_to_html(
+                    self.target_dir, 
+                    original_file, 
+                    found_html, 
+                    log_func=self.gui_handler.log
+                )
+                total_updated += updated
+        
+        msg = f"Global Link Fix Complete.\nRepaired links for {doc_count} different documents across {total_updated} instances."
+        self.gui_handler.log(f"\n--- {msg} ---")
+        messagebox.showinfo("Complete", msg)
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = ToolkitGUI(root)
