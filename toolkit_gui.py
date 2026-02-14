@@ -1775,18 +1775,11 @@ YOUR WORKFLOW:
         # [NEW] Emergency Reset
         ttk.Button(frame, text="🛡️ Emergency UI Reset (Fix Unclickable Buttons)", 
                    command=self._enable_buttons).pack(fill="x", pady=20)
-                  wraplength=350, font=("Segoe UI", 8)).pack(pady=(0, 15))
 
         # Clear Logs
         ttk.Button(frame, text="🧹 Clear Activity Log", 
                    command=lambda: [self.txt_log.configure(state='normal'), self.txt_log.delete(1.0, tk.END), self.txt_log.configure(state='disabled')],
                    style="TButton").pack(fill="x", pady=5)
-
-        # [NEW] Fix All Document Links
-        ttk.Button(frame, text="🔗 Fix All Document-to-HTML Links", 
-                   command=self._run_all_links_fix, style="TButton").pack(fill="x", pady=5)
-        ttk.Label(frame, text="Scans for broken .docx, .pdf, .pptx links and repairs them to .html.", 
-                  wraplength=350, font=("Segoe UI", 8)).pack(pady=(0, 15))
 
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
 
