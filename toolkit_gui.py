@@ -1071,13 +1071,11 @@ A: Most courses: 10-30 minutes.
 ────────────────────────────────────────
 
 🎯 A Note from the Developer
-I'm Dr. Meri Kasprak. I built this toolkit to bridge the gap between complex 
-federal requirements and the busy reality we face as educators. I've spent 
-my career in Instructional Design and IT, but I'm a teacher at heart. 
+I started building this toolkit while creating a new course, using AntiGravity to keep my themes consistent. As I added ADA compliance checks and automated fixes, the project grew into what it is today.
 
-I originally coded this for my son Mosh, but I'm sharing it with you because 
-every student—and every teacher—deserves an accessible path to learning 
-that doesn't take forever.
+This toolkit is dedicated to my son, Michael Joshua Albright (MOSH), who attended college while fighting diabetic retinopathy—sometimes he could see, and sometimes he couldn't. I feel this program is a gift intended to be freely given to help teachers achieve compliance and students benefit from accessible learning.
+
+I have taught computer, animation, programming, and web development classes since 2000. I hold a PhD in Instructional Design for online learning, and my hope is that this toolkit makes accessibility truly accessible for everyone.
 
 Questions? Feedback? 
 Email: meredithkasprak@gmail.com
