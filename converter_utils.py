@@ -1384,11 +1384,17 @@ def update_links_in_directory(directory, old_filename, new_filename):
                         href = a['href']
                         # Standardize href for comparison
                         clean_href = urllib.parse.unquote(href).replace('\\', '/')
+                        # Remove query parameters for strict filename comparison
+                        clean_href_no_qs = clean_href.split('?')[0]
                         
                         # Preserve prefixes like $IMS-CC-FILEBASE$/ by only replacing the filename part
-                        if clean_href.endswith(old_base.replace('\\', '/')) or href == old_base_enc:
+                        # Case-insensitive comparison
+                        if clean_href_no_qs.lower().endswith(old_base.lower().replace('\\', '/')) or href.lower() == old_base_enc.lower():
                             # Use regex or simple replace that targets the specific filename
-                            a['href'] = href.replace(old_base, new_base).replace(old_base_enc, new_base.replace(' ', '%20'))
+                            # We use a case-insensitive sub/replace if possible
+                            a['href'] = re.sub(re.escape(old_base), new_base, href, flags=re.IGNORECASE)
+                            a['href'] = re.sub(re.escape(old_base_enc), new_base.replace(' ', '%20'), a['href'], flags=re.IGNORECASE)
+                            
                             # Update link text to be human-readable
                             a.string = new_link_text
                             modified = True
@@ -1396,8 +1402,10 @@ def update_links_in_directory(directory, old_filename, new_filename):
                     # 2. Update Images (<img> tags)
                     for img in soup.find_all('img', src=True):
                         src = img['src']
-                        if src.endswith(old_base) or src == old_base_enc:
-                            img['src'] = src.replace(old_base, new_base).replace(old_base_enc, new_base.replace(' ', '%20'))
+                        clean_src = urllib.parse.unquote(src).replace('\\', '/').split('?')[0]
+                        if clean_src.lower().endswith(old_base.lower()) or src.lower() == old_base_enc.lower():
+                            img['src'] = re.sub(re.escape(old_base), new_base, src, flags=re.IGNORECASE)
+                            img['src'] = re.sub(re.escape(old_base_enc), new_base.replace(' ', '%20'), img['src'], flags=re.IGNORECASE)
                             modified = True
 
                     if modified:
@@ -1409,32 +1417,38 @@ def update_links_in_directory(directory, old_filename, new_filename):
     return count
 
 
-
-def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=None):
+def update_doc_links_to_html(root_dir, old_filename, new_filename, log_func=None):
     """
-    Updates all HTML files to replace links to .pptx files with links to .html files.
-    Handles Canvas-style links with $IMS-CC-FILEBASE$ tokens and data-api-endpoint attributes.
-    Makes link text human-readable by replacing underscores with spaces.
+    Updates all HTML files to replace links to a source document with links to the new HTML version.
+    Handles Word, PPT, Excel, and PDF.
     
     Args:
         root_dir: Root directory to scan
-        pptx_filename: Original PowerPoint filename (e.g., "PE_1_4-5_Creating_Functions.pptx")
-        html_filename: New HTML filename (e.g., "PE_1_4-5_Creating_Functions.html")
+        old_filename: Original filename (e.g., "Syllabus.docx")
+        new_filename: New HTML filename (e.g., "Syllabus.html")
         log_func: Optional logging function
-    
-    Returns:
-        Number of files updated
     """
     if log_func:
-        log_func(f"  [Link Update] {pptx_filename} -> {html_filename}")
+        log_func(f"  [Link Update] {old_filename} -> {new_filename}")
     
-    # Get base names without extensions
-    pptx_base = os.path.splitext(pptx_filename)[0]
-    html_base = os.path.splitext(html_filename)[0]
+    # Get base names and extensions
+    old_base, old_ext = os.path.splitext(old_filename)
+    new_base = os.path.splitext(new_filename)[0]
     
-    # URL-encoded versions (Canvas uses %20 for spaces)
-    pptx_encoded = pptx_base.replace(" ", "%20")
-    html_encoded = html_base.replace(" ", "%20")
+    # Extension hint for link text (e.g. PPTX, DOCX, PDF)
+    ext_hint = old_ext.upper().replace('.', '')
+    if ext_hint == "DOC": ext_hint = "DOCX" # Standardize
+    if ext_hint == "PPT": ext_hint = "PPTX"
+    if ext_hint == "XLS": ext_hint = "XLSX"
+
+    # URL-encoded versions
+    old_encoded = old_base.replace(" ", "%20")
+    new_encoded = new_base.replace(" ", "%20")
+    
+    # Escape for regex safely
+    e_old_base = re.escape(old_base)
+    e_old_encoded = re.escape(old_encoded)
+    e_old_ext = re.escape(old_ext)
     
     count = 0
     for root, dirs, files in os.walk(root_dir):
@@ -1450,34 +1464,32 @@ def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=N
                 modified = False
                 
                 # Pattern 1: href with $IMS-CC-FILEBASE$ token
-                # Handles .pptx, .ppt, and URL encoded versions
-                # Replace: href="$IMS-CC-FILEBASE$/.../filename.pptx"
-                # With:    href="$IMS-CC-FILEBASE$/.../filename.html"
-                pattern1 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_base)}\.pptx?([^"]*)"'
-                if re.search(pattern1, content):
-                    content = re.sub(pattern1, rf'href="\1{html_base}.html\2"', content)
+                # Handles $IMS-CC-FILEBASE$/.../filename.pptx or .pdf or .docx
+                # We use re.IGNORECASE for extensions and filenames
+                pattern1 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){e_old_base}{e_old_ext}(\?[^"]*)?"'
+                if re.search(pattern1, content, re.IGNORECASE):
+                    content = re.sub(pattern1, rf'href="\1{new_base}.html\2"', content, flags=re.IGNORECASE)
                     modified = True
                 
                 # Pattern 2: URL-encoded version
-                pattern2 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){re.escape(pptx_encoded)}\.pptx?([^"]*)"'
-                if re.search(pattern2, content):
-                    content = re.sub(pattern2, rf'href="\1{html_encoded}.html\2"', content)
+                pattern2 = rf'href="(\$IMS-CC-FILEBASE\$/[^"]*){e_old_encoded}{e_old_ext}(\?[^"]*)?"'
+                if re.search(pattern2, content, re.IGNORECASE):
+                    content = re.sub(pattern2, rf'href="\1{new_encoded}.html\2"', content, flags=re.IGNORECASE)
                     modified = True
                 
                 # Pattern 3: title attributes
-                pattern3 = rf'title="{re.escape(pptx_base)}"'
-                if re.search(pattern3, content):
-                    content = re.sub(pattern3, f'title="{html_base}"', content)
+                pattern3 = rf'title="{e_old_base}"'
+                if re.search(pattern3, content, re.IGNORECASE):
+                    content = re.sub(pattern3, f'title="{new_base}"', content, flags=re.IGNORECASE)
                     modified = True
                 
-                # Pattern 4: Link text ending with (PPTX) - make human-readable
-                # Replace: >PE_1_4-5_Creating_Functions (PPTX)</a>
-                # With:    >PE 1 4-5 Creating Functions (HTML)</a>
-                pattern4 = rf'>([^<]*){re.escape(pptx_base)}([^<]*)\(PPTX\)</a>'
-                if re.search(pattern4, content):
-                    # Make the link text human-readable by replacing underscores with spaces
-                    readable_name = html_base.replace('_', ' ')
-                    content = re.sub(pattern4, rf'>\1{readable_name}\2(HTML)</a>', content)
+                # Pattern 4: Link text with extension hint - make human-readable
+                # Replace: >Syllabus (DOCX)</a> -> >Syllabus (HTML)</a>
+                # Handle various formats: (PDF), (DOCX), (PPTX), (XLSX)
+                pattern4 = rf'>([^<]*?){e_old_base}([^<]*?)\({ext_hint}\)</a>'
+                if re.search(pattern4, content, re.IGNORECASE):
+                    readable_name = new_base.replace('_', ' ')
+                    content = re.sub(pattern4, rf'>\1{readable_name}\2(HTML)</a>', content, flags=re.IGNORECASE)
                     modified = True
                 
                 if modified:
@@ -1491,8 +1503,11 @@ def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=N
     
     if log_func:
         log_func(f"  [Link Update] Updated {count} file(s)")
-    
     return count
+
+def update_pptx_links_to_html(root_dir, pptx_filename, html_filename, log_func=None):
+    """Legacy wrapper for backward compatibility."""
+    return update_doc_links_to_html(root_dir, pptx_filename, html_filename, log_func)
 
 
 def unzip_course_package(zip_path, extract_to, log_func=None):

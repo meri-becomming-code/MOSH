@@ -1478,9 +1478,9 @@ YOUR WORKFLOW:
                     output_path, err = converter_utils.convert_excel_to_html(fpath)
                 elif ext == "pptx":
                      output_path, err = converter_utils.convert_ppt_to_html(fpath, self.gui_handler)
-                     # Update links to PowerPoint file
+                     # Update links to the source file (all types)
                      if output_path:
-                         converter_utils.update_pptx_links_to_html(
+                         converter_utils.update_doc_links_to_html(
                              self.target_dir,
                              os.path.basename(fpath),
                              os.path.basename(output_path),
@@ -1569,9 +1569,9 @@ YOUR WORKFLOW:
                 output_path, err = converter_utils.convert_excel_to_html(file_path)
             elif ext == "pptx":
                 output_path, err = converter_utils.convert_ppt_to_html(file_path, self.gui_handler)
-                # Update links to PowerPoint file
+                # Update links to the source file (all types)
                 if output_path:
-                    converter_utils.update_pptx_links_to_html(
+                    converter_utils.update_doc_links_to_html(
                         self.target_dir,
                         os.path.basename(file_path),
                         os.path.basename(output_path),
@@ -1756,6 +1756,12 @@ YOUR WORKFLOW:
                    command=lambda: [self.txt_log.configure(state='normal'), self.txt_log.delete(1.0, tk.END), self.txt_log.configure(state='disabled')],
                    style="TButton").pack(fill="x", pady=5)
 
+        # [NEW] Fix All Document Links
+        ttk.Button(frame, text="🔗 Fix All Document-to-HTML Links", 
+                   command=self._run_all_links_fix, style="TButton").pack(fill="x", pady=5)
+        ttk.Label(frame, text="Scans for broken .docx, .pdf, .pptx links and repairs them to .html.", 
+                  wraplength=350, font=("Segoe UI", 8)).pack(pady=(0, 15))
+
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
 
     def _run_batch_conversion(self):
@@ -1815,9 +1821,9 @@ YOUR WORKFLOW:
                     output_path, err = converter_utils.convert_excel_to_html(fpath)
                 elif ext == "pptx":
                     output_path, err = converter_utils.convert_ppt_to_html(fpath, self.gui_handler)
-                    # Update links to PowerPoint file
+                    # Update links to the source file (all types)
                     if output_path:
-                        converter_utils.update_pptx_links_to_html(
+                        converter_utils.update_doc_links_to_html(
                             self.target_dir,
                             os.path.basename(fpath),
                             os.path.basename(output_path),
@@ -1825,6 +1831,14 @@ YOUR WORKFLOW:
                         )
                 elif ext == "pdf":
                     output_path, err = converter_utils.convert_pdf_to_html(fpath, self.gui_handler)
+                    # Update links to the source file
+                    if output_path:
+                        converter_utils.update_doc_links_to_html(
+                            self.target_dir,
+                            os.path.basename(fpath),
+                            os.path.basename(output_path),
+                            log_func=self.gui_handler.log
+                        )
                 
                 if output_path:
                     success_count += 1
