@@ -177,10 +177,18 @@ def remediate_html_file(filepath):
     if reflow_fixed:
         fixes.append("Converted fixed widths >320px to responsive max-width")
 
-    # Fix 2: Justified Text
-    if "text-align: justify" in html_content.lower() or "text-align:justify" in html_content.lower():
-         html_content = re.sub(r'text-align:\s*justify;?', 'text-align: left;', html_content, flags=re.IGNORECASE)
-         fixes.append("Replaced 'justify' text alignment with 'left'")
+    # Fix 3: Font Size Remediation (Bumping < 12px to 14px for accessibility)
+    def font_size_bump(match):
+        nonlocal reflow_fixed
+        val = float(match.group(1))
+        unit = match.group(2)
+        if unit == 'px' and val < 12:
+            return "font-size: 14px"
+        elif unit == 'pt' and val < 9:
+            return "font-size: 10.5pt" # ~14px
+        return match.group(0)
+
+    html_content = re.sub(r'font-size:\s*([0-9.]+)(px|pt)', font_size_bump, html_content, flags=re.IGNORECASE)
 
     soup = BeautifulSoup(html_content, 'html.parser')
 

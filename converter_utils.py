@@ -744,7 +744,8 @@ def convert_ppt_to_html(ppt_path, io_handler=None):
                                         inline_styles.append(f"font-family: '{run.font.name}', sans-serif;")
                                     if run.font.size:
                                         size_pt = int(run.font.size / 12700)
-                                        # Only keep if >= 10pt per user request for readability
+                                        # [NEW] Cap excessively large PPT fonts to 30pt and floor at 10pt
+                                        if size_pt > 30: size_pt = 30
                                         if size_pt >= 10:
                                             inline_styles.append(f"font-size: {size_pt}pt;")
                                     
@@ -1771,10 +1772,34 @@ def batch_update_manifest_resources(root_dir, path_map):
 
         new_content = re.sub(r'href="([^"]+)"', repl_func, content)
 
+        # [NEW] Auto-Register web_resources files in manifest if they exist
+        # This solves the "Broken Image" issue on Canvas migrations
+        web_res_root = os.path.join(root_dir, "web_resources")
+        if os.path.exists(web_res_root):
+            extra_resources = []
+            for wr_root, wr_dirs, wr_files in os.walk(web_res_root):
+                for wr_file in wr_files:
+                    wr_fpath = os.path.join(wr_root, wr_file)
+                    wr_rel = os.path.relpath(wr_fpath, root_dir).replace("\\", "/")
+                    # If this file isn't already in the manifest, we should add a snippet
+                    if f'href="{wr_rel}"' not in new_content:
+                        # Simple registration: add it near the end of the resources block
+                        entry = f'    <file href="{wr_rel}"/>'
+                        extra_resources.append(entry)
+            
+            if extra_resources:
+                # Find the end of the last resource or the close of the manifest
+                if "</resources>" in new_content:
+                    new_content = new_content.replace("</resources>", "\n".join(extra_resources) + "\n  </resources>")
+                    replacements += len(extra_resources)
+                else:
+                    # Fallback if no resources tag (unlikely)
+                    pass
+
         if replacements > 0:
             with open(manifest_path, 'w', encoding='utf-8') as f:
                 f.write(new_content)
-            return True, f"Turbo Manifest: {replacements} entries synchronized in one pass."
+            return True, f"Turbo Manifest: {replacements} entries synchronized (including web_resources)."
         
         return False, "No matching entries found in manifest during turbo pass."
     except Exception as e:
@@ -1803,8 +1828,11 @@ def run_janitor_cleanup(source_dir, log_func=None):
                 file_path = os.path.join(root, file)
                 base_name = os.path.splitext(file)[0]
                 html_version = os.path.join(root, base_name + ".html")
+                # [FIX] Also check for sanitized version!
+                s_base = sanitize_filename(base_name)
+                html_sanitized = os.path.join(root, s_base + ".html")
                 
-                if os.path.exists(html_version):
+                if os.path.exists(html_version) or os.path.exists(html_sanitized):
                     new_path = archive_source_file(file_path)
                     if new_path:
                         cleaned_count += 1

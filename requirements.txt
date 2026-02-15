@@ -9,3 +9,5 @@ pdfminer.six
 Pillow
 pymupdf
 python-docx
+google-genai
+pdf2image

@@ -629,6 +629,41 @@ Step 4: Click "Am I Ready to Upload?" to push to your Sandbox course.
         self.btn_batch.pack(fill="x", pady=(12, 0))
 
 
+        # -- Step 2.5: Math LaTeX Converter (NEW) --
+        ttk.Label(content, text="🔬 Math Converter (GEMINI AI)", style="SubHeader.TLabel").pack(anchor="w", pady=(20, 5))
+        
+        math_disclaimer = tk.Frame(content, bg="#E8F5E9", padx=15, pady=15, highlightbackground="#4CAF50", highlightthickness=2)
+        math_disclaimer.pack(fill="x", pady=(0, 10))
+        
+        tk.Label(math_disclaimer, text="✨ AI-Powered Math Conversion",  font=("Segoe UI", 11, "bold"), bg="#E8F5E9", fg="#2E7D32").pack(anchor="w")
+        math_desc = (
+            "Gemini AI reads handwritten solutions and equations, then converts them to accessible Canvas LaTeX. "
+            "This makes math searchable, copy-paste friendly, and screen-reader compatible!"
+        )
+        tk.Label(math_disclaimer, text=math_desc, wraplength=550, bg="#E8F5E9", fg="#1B5E20", justify="left", font=("Segoe UI", 9)).pack(pady=(5,0))
+        
+        frame_math = ttk.Frame(content, style="Card.TFrame", padding=15)
+        frame_math.pack(fill="x", pady=(0, 20))
+        
+        self.btn_math_canvas = ttk.Button(frame_math, text="📚 Convert Canvas Export PDFs", 
+                                           command=self._convert_math_canvas_export, style="Action.TButton")
+        self.btn_math_canvas.pack(fill="x", pady=(0, 8))
+        
+        frame_math_singles = ttk.Frame(frame_math)
+        frame_math_singles.pack(fill="x")
+        
+        self.btn_math_pdf = ttk.Button(frame_math_singles, text="📄 Single PDF", 
+                                        command=lambda: self._convert_math_files("pdf"))
+        self.btn_math_pdf.pack(side="left", fill="x", expand=True, padx=2)
+        
+        self.btn_math_word = ttk.Button(frame_math_singles, text="📝 Word Doc", 
+                                         command=lambda: self._convert_math_files("docx"))
+        self.btn_math_word.pack(side="left", fill="x", expand=True, padx=2)
+        
+        self.btn_math_images = ttk.Button(frame_math_singles, text="🖼️ Images", 
+                                           command=lambda: self._convert_math_files("images"))
+        self.btn_math_images.pack(side="left", fill="x", expand=True, padx=2)
+
 
         # -- Step 3: Remediation Actions (Grid) --
         ttk.Label(content, text="Step 3: Fix & Review", style="SubHeader.TLabel").pack(anchor="w", pady=(0, 5))
@@ -1733,12 +1768,16 @@ YOUR WORKFLOW:
             
             if images:
                 self.gui_handler.log(f"   [Sync] Found {len(images)} images. Uploading to course files...")
+                import urllib.parse
                 for img in images:
                     local_src = img.get('src')
                     if not local_src or "http" in local_src: continue
                     
+                    # [FIX] Handle URL-encoded characters in local paths (e.g. %20 for space)
+                    clean_src = urllib.parse.unquote(local_src)
+                    
                     # Resolve absolute path
-                    img_abs_path = os.path.join(os.path.dirname(html_path), local_src)
+                    img_abs_path = os.path.join(os.path.dirname(html_path), clean_src)
                     if os.path.exists(img_abs_path):
                         success_img, res_img = api.upload_file(img_abs_path, folder_path="remediated_images")
                         if success_img:
@@ -2338,7 +2377,119 @@ YOUR WORKFLOW:
             self.gui_handler.log(f"\n--- {msg} ---")
             self.root.after(0, lambda: messagebox.showinfo("Complete", msg))
 
+        
         self._run_task_in_thread(task, "Global Link Repair")
+
+    def _convert_math_canvas_export(self):
+        """Convert all PDFs in Canvas export using Gemini."""
+        self.target_dir = self.lbl_dir.get().strip()
+        if not os.path.isdir(self.target_dir):
+            messagebox.showerror("Error", "Please select a Canvas export folder first (Step 1).")
+            return
+        
+        # Check Gemini API key
+        api_key = self.config.get("api_key", "").strip()
+        if not api_key:
+            messagebox.showwarning("No Gemini API Key",
+                                  "You need a Gemini API key for math conversion.\\n\\n"
+                                  "Click '🔗 Connect to My Canvas Playground' and add your key in Step 4.")
+            return
+        
+        if not messagebox.askyesno("Start Math Conversion?",
+                                   f"This will use Gemini AI to convert all PDFs in:\\n{self.target_dir}\\n\\n"
+                                   "This may take several minutes and will use your Gemini API quota.\\n\\n"
+                                   "Continue?"):
+            return
+        
+        def task():
+            import math_converter
+            self.gui_handler.log("\\n=== GEMINI MATH CONVERTER ===")
+            self.gui_handler.log("🤖 Using AI to read handwritten math and convert to LaTeX...")
+            
+            success, result = math_converter.process_canvas_export(
+                api_key, 
+                self.target_dir, 
+                log_func=self.gui_handler.log
+            )
+            
+            if success:
+                html_files = result
+                self.gui_handler.log(f"\\n✨ SUCCESS! Created {len(html_files)} Canvas pages with accessible LaTeX math!")
+                self.gui_handler.log("\\nNEXT STEPS:")
+                self.gui_handler.log("1. Review HTML files in converted_math_pages/ folder")
+                self.gui_handler.log("2. Copy content into Canvas pages")
+                self.gui_handler.log("3. Verify LaTeX renders correctly")
+                
+                msg = (f"✨ Gemini converted {len(html_files)} PDFs to accessible Canvas LaTeX!\\n\\n"
+                       f"Output location: {self.target_dir}/converted_math_pages/\\n\\n"
+                       "Next: Open these HTML files and paste content into Canvas pages.")
+                self.root.after(0, lambda: messagebox.showinfo("Conversion Complete! 🎉", msg))
+            else:
+                self.gui_handler.log(f"\\n❌ Error: {result}")
+                self.root.after(0, lambda: messagebox.showerror("Conversion Failed", 
+                    f"Could not convert PDFs:\\n{result}\\n\\nCheck Activity Log for details."))
+        
+        self._run_task_in_thread(task, "Math PDF Conversion")
+
+    def _convert_math_files(self, file_type):
+        """Convert individual math files using Gemini."""
+        api_key = self.config.get("api_key", "").strip()
+        if not api_key:
+            messagebox.showwarning("No Gemini API Key",
+                                  "You need a Gemini API key for math conversion.\\n\\n"
+                                  "Click '🔗 Connect to My Canvas Playground' and add your key in Step 4.")
+            return
+        
+        # File picker based on type
+        if file_type == "pdf":
+            file_path = filedialog.askopenfilename(
+                title="Select PDF with Math",
+                filetypes=[("PDF Files", "*.pdf")]
+            )
+        elif file_type == "docx":
+            file_path = filedialog.askopenfilename(
+                title="Select Word Document",
+                filetypes=[("Word Files", "*.docx")]
+            )
+        elif file_type == "images":
+            file_path = filedialog.askopenfilename(
+                title="Select Image",
+                filetypes=[("Images", "*.png *.jpg *.jpeg *.gif")]
+            )
+        else:
+            return
+        
+        if not file_path:
+            return
+        
+        def task():
+            import math_converter
+            self.gui_handler.log(f"\\n=== GEMINI MATH CONVERTER ({file_type.upper()}) ===")
+            
+            if file_type == "pdf":
+                success, result = math_converter.convert_pdf_to_latex(api_key, file_path, self.gui_handler.log)
+            elif file_type == "docx":
+                success, result = math_converter.convert_word_to_latex(api_key, file_path, self.gui_handler.log)
+            elif file_type == "images":
+                success, result = math_converter.convert_image_to_latex(api_key, file_path, self.gui_handler.log)
+            else:
+                success = False
+                result = "Unknown file type"
+            
+            if success:
+                # Save output
+                output_path = Path(file_path).with_suffix('.html')
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(result)
+                
+                self.gui_handler.log(f"\\n✨ SUCCESS! Saved to: {output_path}")
+                msg = f"✨ Gemini converted your math to LaTeX!\\n\\nSaved as:\\n{output_path}\\n\\nOpen this file and paste into Canvas."
+                self.root.after(0, lambda: messagebox.showinfo("Conversion Complete! 🎉", msg))
+            else:
+                self.gui_handler.log(f"\\n❌ Error: {result}")
+                self.root.after(0, lambda: messagebox.showerror("Conversion Failed", f"Error:\\n{result}"))
+        
+        self._run_task_in_thread(task, f"Math {file_type.upper()} Conversion")
 
 if __name__ == "__main__":
     root = tk.Tk()

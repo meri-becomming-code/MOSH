@@ -101,6 +101,23 @@ def check_style_contrast(tag):
             
             if ratio < threshold:
                 return f"Contrast Fail ({ratio:.2f}:1 vs {threshold}:1) {fg} on {bg}"
+def check_reflow_styles(tag):
+    """Checks for fixed widths or other styles that break mobile reflow."""
+    style = tag.get('style', '').lower()
+    
+    # Check for large fixed pixel widths
+    width_match = re.search(r'width:\s*([0-9.]+)\s*px', style)
+    if width_match:
+        try:
+            w = float(width_match.group(1))
+            if w > 400:
+                return f"Fixed large width ({w}px) may break mobile reflow"
+        except: pass
+        
+    # Check for nowrap on long lines
+    if 'white-space: nowrap' in style and len(tag.get_text()) > 50:
+        return "Non-wrapping text (nowrap) may cause horizontal scrolling"
+        
     return None
 
 def check_small_fonts(tag):
@@ -113,9 +130,10 @@ def check_small_fonts(tag):
         unit = size_match.group(2)
         
         is_small = False
-        if unit == 'px' and val <= 9: is_small = True
-        elif unit == 'pt' and val <= 7: is_small = True
-        elif unit in ['em', 'rem'] and val <= 0.6: is_small = True
+        # [STRICTER] Standard accessibility recommends at least 12px (~9pt)
+        if unit == 'px' and val < 12: is_small = True
+        elif unit == 'pt' and val < 9: is_small = True
+        elif unit in ['em', 'rem'] and val < 0.75: is_small = True
         
         if is_small:
             return f"Small Font Size: {val}{unit} (May be unreadable)"
